@@ -4,6 +4,8 @@
 
 // Every query gets SAFE added: videos only, and skip uploaders known to stamp a logo on the picture.
 const SAFE = ' AND mediatype:movies' +
+  // English only (tapes tagged with another language are skipped)
+  ' AND NOT language:(spa OR spanish OR por OR portuguese OR fre OR french OR ger OR german OR ita OR italian OR jpn OR japanese OR rus OR russian OR chi OR chinese OR kor OR korean OR hin OR hindi OR ara OR arabic OR tur OR turkish)' +
   ' AND NOT (coffee4binky OR "Tyrone L. Warbasse" OR "Las Vegas Time Machine" OR Lazerverse OR "Going Buoy" OR "Spaced Out Truckers" OR "Phony Phootbawl" OR description:patreon OR title:patreon)';
 // Adult channels also get this: drops anything titled or tagged in a way that suggests minors.
 const NO_MINORS = ' AND NOT (title:teen OR subject:teen OR title:teens OR title:young OR subject:young OR title:girl OR title:girls OR title:schoolgirl OR title:school OR title:lolita OR subject:lolita OR title:minor OR title:underage OR title:child OR title:kid OR title:barely OR title:petite OR subject:hentai)';

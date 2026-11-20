@@ -5,7 +5,8 @@ import android.graphics.Color
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
-import android.view.TextureView
+import android.animation.ValueAnimator
+import android.view.SurfaceView
 import android.widget.FrameLayout
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
@@ -21,8 +22,9 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
  */
 class NativeVideo(ctx: Context, private val emit: (String, Long, Long) -> Unit) {
 
-    val box = FrameLayout(ctx).apply { setBackgroundColor(Color.BLACK); pivotX = 0f; pivotY = 0f }
-    private val surface = TextureView(ctx)
+    val box = FrameLayout(ctx).apply { setBackgroundColor(Color.BLACK) }
+    // SurfaceView = the TV's direct video plane: hardware scaling, no extra GPU pass, nothing drawn over the picture.
+    private val surface = SurfaceView(ctx)
     private val main = Handler(Looper.getMainLooper())
     private var videoW = 16; private var videoH = 9; private var pixelRatio = 1f
 
@@ -42,7 +44,7 @@ class NativeVideo(ctx: Context, private val emit: (String, Long, Long) -> Unit) 
 
     init {
         box.addView(surface, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT, Gravity.CENTER))
-        player.setVideoTextureView(surface)
+        player.setVideoSurfaceView(surface)
         box.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> fitSurface() }
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
@@ -101,13 +103,29 @@ class NativeVideo(ctx: Context, private val emit: (String, Long, Long) -> Unit) 
     fun stop() { player.stop(); player.clearMediaItems() }
     fun seek(ms: Long) { player.seekTo(ms.coerceAtLeast(0)) }
 
+    private var cur = floatArrayOf(0f, 0f, 1f, 1f)
+    private var anim: ValueAnimator? = null
+
     /** Move/shrink the picture (fractions of the screen) — used for the guide's preview box. */
     fun rect(x: Float, y: Float, w: Float, h: Float) {
         val parent = box.parent as? android.view.View ?: return
-        box.animate()
-            .translationX(x * parent.width).translationY(y * parent.height)
-            .scaleX(w).scaleY(h)
-            .setDuration(450).start()
+        val from = cur.copyOf(); val to = floatArrayOf(x, y, w, h)
+        anim?.cancel()
+        anim = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 420
+            interpolator = android.view.animation.DecelerateInterpolator()
+            addUpdateListener { a ->
+                val t = a.animatedValue as Float
+                val v = FloatArray(4) { from[it] + (to[it] - from[it]) * t }
+                cur = v
+                val lp = box.layoutParams as FrameLayout.LayoutParams
+                lp.width = (v[2] * parent.width).toInt(); lp.height = (v[3] * parent.height).toInt()
+                lp.leftMargin = (v[0] * parent.width).toInt(); lp.topMargin = (v[1] * parent.height).toInt()
+                lp.gravity = Gravity.TOP or Gravity.START
+                box.layoutParams = lp
+            }
+            start()
+        }
     }
 
     fun release() { main.removeCallbacksAndMessages(null); player.release() }

@@ -24,6 +24,9 @@ import time
 import urllib.parse
 import urllib.request
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import english  # noqa: E402  (English-only filter)
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CHANNELS_JS = os.path.join(ROOT, 'app/src/main/assets/channels.js')
 OUT = os.path.join(ROOT, 'lists')
@@ -33,7 +36,14 @@ SEARCH_ROWS = 400      # how deep to look per channel
 KEEP = 90              # tapes to keep per channel
 MAX_EPISODES = 60      # cap for "complete series" items with hundreds of files
 MIN_HEIGHT = 480
-MIN_KBPS = {480: 900, 576: 1100, 720: 1800, 1080: 3000}   # floor by resolution
+# Quality floors (kbps by resolution). Older decades keep the looser bar (that's what exists);
+# 80s and up must look like a clean broadcast/DVD of the time, not a re-recorded smear.
+PROFILES = {
+    'classic': {480: 900, 576: 1100, 720: 1800, 1080: 3000},
+    'clean':   {480: 1800, 576: 2000, 720: 2600, 1080: 4000},
+}
+DECADE_PROFILE = {'50s': 'classic', '60s': 'classic', '70s': 'classic', '80s': 'clean', '90s': 'clean', '00s': 'clean'}
+DEEP_ROWS = {'clean': 900, 'classic': SEARCH_ROWS}
 VIDEO_EXT = ('.mp4', '.m4v', '.mkv')
 UA = {'User-Agent': 'RewindTV-curator/1.0 (github.com/Vyd02/RewindTV)'}
 
@@ -58,15 +68,15 @@ console.log(JSON.stringify(out));"""
     return json.loads(subprocess.run(['node', '-e', js], check=True, capture_output=True, text=True).stdout)
 
 
-def kbps_floor(h):
+def kbps_floor(h, floors):
     best = 0
-    for res, k in sorted(MIN_KBPS.items()):
+    for res, k in sorted(floors.items()):
         if h >= res:
             best = k
     return best
 
 
-def summarize(meta):
+def summarize(meta, floors):
     """Turn an item's metadata into playable episode groups that pass the quality bar."""
     files = [f for f in meta.get('files', []) if f.get('name', '').lower().endswith(VIDEO_EXT)
              and '_512kb' not in f['name'].lower()]
@@ -82,7 +92,7 @@ def summarize(meta):
             L = float(f.get('length') or 0) if re.match(r'^[\d.]+$', str(f.get('length') or '')) else 0
             size = int(f.get('size') or 0)
             kbps = size * 8 / L / 1000 if L > 0 else 0
-            ok = h >= MIN_HEIGHT and kbps >= kbps_floor(h)
+            ok = h >= MIN_HEIGHT and kbps >= kbps_floor(h, floors)
             # streaming-ready archive copy wins ties; then sharper; then more bitrate
             score = (ok, h, f['name'].lower().endswith('.ia.mp4'), kbps)
             cands.append((score, f, h, L))
@@ -122,20 +132,26 @@ def main():
     keys = {k for a in args if a.startswith('--only=') for k in a.split('=', 1)[1].split(',')}
     only = {a for a in args if not a.startswith('--')}
     os.makedirs(os.path.dirname(CACHE), exist_ok=True)
-    cache = json.load(open(CACHE)) if os.path.exists(CACHE) else {}
+    langcache = english.load_cache()
+    allcache = json.load(open(CACHE)) if os.path.exists(CACHE) else {}
+    if allcache and 'classic' not in allcache and 'clean' not in allcache:
+        allcache = {'classic': allcache}      # older single-profile cache
     LU = lineups()
     report = []
     for dec, chans in LU.items():
         if only and dec not in only:
             continue
         os.makedirs(os.path.join(OUT, dec), exist_ok=True)
+        prof = DECADE_PROFILE.get(dec, 'classic')
+        floors = PROFILES[prof]
+        cache = allcache.setdefault(prof, {})
         for ch in chans:
             theme = ch['key'].split(':')[1]
             if keys and ch['key'] not in keys and theme not in keys:
                 continue
             url = 'https://archive.org/advancedsearch.php?' + urllib.parse.urlencode([
                 ('q', ch['q']), ('fl[]', 'identifier'), ('fl[]', 'title'),
-                ('rows', SEARCH_ROWS), ('sort[]', 'downloads desc'), ('output', 'json')])
+                ('rows', DEEP_ROWS[prof]), ('sort[]', 'downloads desc'), ('output', 'json')])
             try:
                 docs = get(url)['response']['docs']
             except Exception as e:
@@ -146,7 +162,7 @@ def main():
 
             def fetch(i):
                 try:
-                    return i, summarize(get('https://archive.org/metadata/' + urllib.parse.quote(i)))
+                    return i, summarize(get('https://archive.org/metadata/' + urllib.parse.quote(i)), floors)
                 except Exception:
                     return i, None
 
@@ -165,12 +181,13 @@ def main():
                         eps = cache.get(d['identifier'])
                         if eps:
                             kept.append({'id': d['identifier'], 't': re.sub(r'\s+', ' ', str(d.get('title') or d['identifier']).replace('_', ' ')).strip()[:140], 'e': eps})
-            kept = kept[:KEEP]
+            kept = english.keep_english(kept, langcache)[:KEEP]
+            english.save_cache(langcache)
             json.dump({'call': ch['call'], 'q': ch['q'], 'updated': time.strftime('%Y-%m-%d'), 'items': kept},
                       open(os.path.join(OUT, dec, theme + '.json'), 'w'), separators=(',', ':'))
             report.append((dec, ch['call'], len(kept), f'checked {pos if pos < len(docs) else len(docs)} of {len(docs)}'))
             print(f'{dec} {ch["call"]:6} kept {len(kept):3}  (looked at {min(pos, len(docs))}/{len(docs)})', flush=True)
-            json.dump(cache, open(CACHE, 'w'))
+            json.dump(allcache, open(CACHE, 'w'))
     write_index()
     thin = [r for r in report if not isinstance(r[2], int) or r[2] < 15]
     print('\nThin or failed channels:', thin or 'none')

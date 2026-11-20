@@ -527,6 +527,7 @@ function buildGuide() {
 }
 function moveGuide(k) {
   const n = G.list.length; S.gSel = ((k % n) + n) % n;
+  if (isVod(G.dec) && !(G.list[0] && G.list[0].loading)) VODSEL[G.dec] = S.gSel;
   const visible = Math.floor(($('gList').clientHeight || 420) / ROW_H);
   const top = Math.max(0, Math.min(S.gSel - Math.floor(visible / 2), n - visible));
   $('gRows').style.transform = `translateY(${-top * ROW_H}px)`;
@@ -541,7 +542,7 @@ function switchTab(dir) {
 }
 
 /* ---------- On Demand: full movies and full episodes, from the start ---------- */
-const VOD = {};
+const VOD = {}, VODSEL = {};
 function loadVod(kind) {
   return VOD[kind] || (VOD[kind] = getJSON(LISTS + 'ondemand/' + kind.toLowerCase() + '.json' + bust())
     .then(d => d.items.map(x => ({ id: x.id, title: cleanTitle(x.t), dec: x.dec, g: x.g, eps: x.e })))
@@ -563,16 +564,21 @@ function buildVod() {
     $('gRows').innerHTML = items.map(it =>
       `<div class="gr" style="--ch:#ffe066"><div class="gc"><b>${it.dec}</b>${kind === 'MOVIES' ? (GENRE[it.g] || 'FLIX') : 'SHOW'}</div>` +
       `<div class="gt now">${esc(it.title)}</div><div class="gt">${kind === 'MOVIES' ? hm(it.eps[0].len) : it.eps.length + ' episodes'}</div></div>`).join('');
-    // Open on the decade you're watching (90s by default) instead of the top of the 50s.
-    const start = items.findIndex(it => it.dec === DEC);
-    moveGuide(S.gSel > 0 ? Math.min(S.gSel, items.length - 1) : Math.max(0, start));
+    // Land on what you're watching; else where you last were in this tab; else your decade.
+    const watching = S.vod && S.vod.kind === kind ? items.findIndex(it => it.id === S.vod.item.id) : -1;
+    const remembered = VODSEL[kind] != null ? VODSEL[kind] : -1;
+    const start = Math.max(0, items.findIndex(it => it.dec === DEC));
+    moveGuide(watching >= 0 ? watching : remembered >= 0 ? Math.min(remembered, items.length - 1) : start);
   }).catch(() => { if (G.dec === kind) $('gRows').innerHTML = '<div class="gr"><div class="gt now">Couldn\u2019t load On Demand. Check the internet.</div></div>'; });
   $('gRows').classList.remove('swap'); void $('gRows').offsetWidth; $('gRows').classList.add('swap');
 }
 function pickVod(k) {
   const it = G.list[k]; if (!it || it.loading) return;
+  VODSEL[G.dec] = k;
   if (G.dec === 'MOVIES') return playVod(it, 0, 'MOVIES');
-  openPicker(it.title, it.eps.map((e, n) => `${pad(n + 1)}. ${e.t ? cleanTitle(e.t) : 'Episode ' + (n + 1)} · ${hm(e.len)}`), n => playVod(it, n, 'SHOWS'));
+  const onEp = S.vod && S.vod.item.id === it.id ? S.vod.ep : 0;
+  openPicker(it.title, it.eps.map((e, n) => `${pad(n + 1)}. ${e.t ? cleanTitle(e.t) : 'Episode ' + (n + 1)} · ${hm(e.len)}` + (S.vod && S.vod.item.id === it.id && n === S.vod.ep ? '  ▶ watching' : '')),
+    n => playVod(it, n, 'SHOWS'), onEp);
 }
 async function playVod(item, ep, kind) {
   closePicker(); closeGuide();
@@ -595,8 +601,8 @@ function vodNext() {
 
 /* A pop-up list to pick from (episodes). */
 const PK = { rows: [], sel: 0, onPick: null };
-function openPicker(title, rows, onPick) {
-  Object.assign(PK, { rows, sel: 0, onPick }); S.pick = true;
+function openPicker(title, rows, onPick, sel = 0) {
+  Object.assign(PK, { rows, sel, onPick }); S.pick = true;
   $('pkHead').textContent = title; drawPicker(); $('pick').classList.remove('hidden');
 }
 function closePicker() { S.pick = false; $('pick').classList.add('hidden'); }
