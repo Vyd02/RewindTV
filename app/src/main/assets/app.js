@@ -141,6 +141,8 @@ function arrange(ch, docs) { const week = Math.floor(Date.now() / (7 * 864e5)); 
    Everyone tuning in at the same moment lands on the same show at the same spot,
    and when you come back later the channel has moved on, like real TV. */
 const DAY_MS = 864e5, GUESS_LEN = 22 * 60;
+// Movie channels always air the whole film, never a half-hour piece of it.
+const MOVIE_THEMES = new Set(['movies', 'comedyfilm', 'noir', 'western', 'horror', 'skin', 'xxx']);
 const TL = {};
 function timeline(ch, list, t) {
   const day = Math.floor((t - new Date(t).getTimezoneOffset() * 6e4) / DAY_MS);
@@ -154,7 +156,8 @@ function timeline(ch, list, t) {
     const picks = shuffle(eps.map((_, k) => k), hash(key + item.id)).slice(0, Math.min(eps.length, 2));
     for (const k of picks) {
       const len = Math.max(30, (eps[k] && eps[k].len) || GUESS_LEN);
-      if (len <= 3600) { entries.push({ i, slot: k, len, from: 0 }); continue; }
+      const whole = len <= 3600 || (MOVIE_THEMES.has(ch.key.split(':')[1]) && len <= 4 * 3600);
+      if (whole) { entries.push({ i, slot: k, len, from: 0 }); continue; }
       // Long tapes (full VHS recordings, marathons) air as half-hour blocks, a couple per day.
       const blocks = Math.floor(len / 1800);
       for (const b of shuffle([...Array(blocks).keys()], hash(key + item.id + k)).slice(0, 2))
@@ -256,6 +259,19 @@ function undoBlock() {
   play(b.ch, b.list, b.i, b.ms, S.token, 0, b.slot);
 }
 
+/* ---------- skip / start over ---------- */
+function skipShow() {
+  const p = S.playing; if (!p) return;
+  toast('⏭ Skipping to the next show', 1800);
+  skip();
+}
+function startOver() {
+  const p = S.playing; if (!p) return;
+  try { vid.currentTime = 0.01; } catch (e) {}
+  vid.play().catch(() => {}); S.paused = false;
+  vcr('⏮ FROM THE TOP'); setTimeout(() => vcr(''), 1500);
+}
+
 /* Blocked Tapes list: open the guide, then press ⏯ */
 let blkSel = 0;
 function blockedIds() { return Object.keys(blockMap); }
@@ -321,7 +337,7 @@ async function tune(idx, opts = {}) {
 async function play(ch, list, i, offsetMs, token, tries, slot, k = 0) {
   if (tries > 6) return offAir(ch);
   let hop = 0;
-  while (blocked.has(list[i % list.length].id) && hop++ < list.length) { i++; offsetMs = 0; slot = null; }
+  while (blocked.has(list[i % list.length].id) && hop++ < list.length) { i++; offsetMs = 0; slot = null; clearTimeout(S.blockTimer); }
   const item = list[i % list.length];
   let files;
   try { files = await videos(item); } catch (e) {
@@ -329,7 +345,8 @@ async function play(ch, list, i, offsetMs, token, tries, slot, k = 0) {
     return;
   }
   if (token !== S.token) return;
-  const f = files[(slot != null ? slot : i) % files.length];
+  const fi = (slot != null ? slot : i) % files.length;
+  const f = files[fi];
   let off = offsetMs / 1000;
   if (f.len > 0) off = off % f.len;
   if (f.len > 0 && f.len - off < 20) off = Math.max(0, f.len - 20);
@@ -337,7 +354,7 @@ async function play(ch, list, i, offsetMs, token, tries, slot, k = 0) {
   const nx = nextAfter(ch, list, Date.now() + 2000), next = nx.item;
   const nxAt = nx.airs || nx.start;
   k = Math.min(k, f.cands.length - 1);
-  S.playing = { ch, list, i, f, k, title, token, tries, slot, offsetMs, startOff: off };
+  S.playing = { ch, list, i, f, fi, k, title, token, tries, slot, offsetMs, startOff: off, watched: 0 };
 
   vid.startAt = off;
   vid.src = f.cands[k];
@@ -558,9 +575,9 @@ function remote(key) {
       if (vid.paused) { vid.play().catch(() => {}); S.paused = false; vcr('▶ PLAY'); setTimeout(() => { if (!S.paused) vcr(''); }, 1500); }
       else { vid.pause(); S.paused = true; vcr('❚❚ PAUSE', true); }
       return;
-    case 'Rewind': try { vid.currentTime = Math.max(0, vid.currentTime - 15); } catch (e) {} vcr('◀◀ REW'); setTimeout(() => vcr(S.paused ? '❚❚ PAUSE' : ''), 1000); return;
+    case 'Rewind': return startOver();
     case 'Block': return blockCurrent();
-    case 'FastForward': try { vid.currentTime += 30; } catch (e) {} vcr('▶▶ FF'); setTimeout(() => vcr(S.paused ? '❚❚ PAUSE' : ''), 1000); return;
+    case 'FastForward': return skipShow();
     case 'Back':
       if (Date.now() - S.backAt < 2500) return powerOff();
       S.backAt = Date.now(); toast('Press BACK again to turn off'); return;
