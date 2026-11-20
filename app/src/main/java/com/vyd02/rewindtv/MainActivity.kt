@@ -42,8 +42,10 @@ class MainActivity : Activity() {
             javaScriptEnabled = true
             domStorageEnabled = true
             mediaPlaybackRequiresUserGesture = false
-            loadWithOverviewMode = true
-            useWideViewPort = true
+            loadWithOverviewMode = false
+            useWideViewPort = false
+            textZoom = 100
+            setSupportZoom(false)
         }
         web.webChromeClient = WebChromeClient()
         web.webViewClient = object : WebViewClient() {
@@ -72,7 +74,8 @@ class MainActivity : Activity() {
             KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE -> "PlayPause"
             KeyEvent.KEYCODE_MEDIA_REWIND -> "Rewind"
             KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> "FastForward"
-            KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_GUIDE, KeyEvent.KEYCODE_INFO -> "Guide"
+            KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_GUIDE, KeyEvent.KEYCODE_INFO, KeyEvent.KEYCODE_TV,
+            KeyEvent.KEYCODE_DVR, KeyEvent.KEYCODE_PROG_RED -> "Guide"
             KeyEvent.KEYCODE_BACK -> "Back"
             KeyEvent.KEYCODE_LAST_CHANNEL -> "Flashback"
             else -> null

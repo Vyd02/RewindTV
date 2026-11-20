@@ -5,7 +5,8 @@
 const SLOT_MS = 30 * 60 * 1000;      // schedule moves in half-hour blocks, like a real guide
 const LIST_ROWS = 250;               // how many items each channel draws from
 const LIST_TTL = 12 * 3600 * 1000;   // refresh channel lists twice a day
-const STALL_MS = 20000;              // skip a tape that won't start
+const STALL_MS = 12000;              // skip a tape that won't start
+const STATIC_MS = 900;               // static only plays for a beat, then a quiet "TUNING..." card
 const $ = id => document.getElementById(id);
 
 const vid = $('vid'), screen = $('screen'), tv = $('tv');
@@ -16,10 +17,11 @@ const S = {
 
 /* ---------- fit the 1920x1080 stage to whatever screen we're on ---------- */
 function fit() {
-  const s = Math.min(innerWidth / 1920, innerHeight / 1080);
-  tv.style.transform = `translate(${(innerWidth - 1920 * s) / 2}px, ${(innerHeight - 1080 * s) / 2}px) scale(${s})`;
+  const w = document.documentElement.clientWidth || innerWidth, h = document.documentElement.clientHeight || innerHeight;
+  const s = Math.min(w / 1920, h / 1080);
+  tv.style.transform = `translate(${(w - 1920 * s) / 2}px, ${(h - 1080 * s) / 2}px) scale(${s})`;
 }
-addEventListener('resize', fit); fit();
+addEventListener('resize', fit); fit(); setTimeout(fit, 300); setTimeout(fit, 1500);
 
 /* ---------- networking: native bridge on the Fire TV, fetch in a browser ---------- */
 const pending = {}; let reqId = 0;
@@ -163,7 +165,16 @@ function skip() {
   play(p.ch, p.list, p.i + 1, 0, p.token, p.tries + 1, null);
 }
 
-vid.addEventListener('playing', () => { clearTimeout(S.stallTimer); staticOff(); bars(false); if (S.playing) S.playing.tries = 0; });
+vid.addEventListener('loadeddata', () => { if (!vid.paused || vid.readyState >= 2) staticOff(); });
+vid.addEventListener('playing', () => { clearTimeout(S.stallTimer); staticOff(); bars(false); if (S.playing) S.playing.tries = 0; prefetch(); });
+// Look up what's on the channels next door so flipping to them skips the slow lookups.
+function prefetch() {
+  const n = CHANNELS.length;
+  [S.idx + 1, S.idx - 1, S.last].forEach(k => {
+    const ch = CHANNELS[((k % n) + n) % n];
+    loadList(ch).then(list => videos(scheduleAt(ch, list, Date.now()).item.id)).catch(() => {});
+  });
+}
 vid.addEventListener('waiting', () => { clearTimeout(S.stallTimer); S.stallTimer = setTimeout(() => { if (vid.readyState < 3 && !S.paused) skip(); }, STALL_MS); });
 vid.addEventListener('ended', () => { const p = S.playing; if (!p) return; staticOn(); play(p.ch, p.list, p.i + 1, 0, p.token, 0, null).then(() => showBanner()); });
 vid.addEventListener('error', () => { if (vid.getAttribute('src')) skip(); });
@@ -204,15 +215,24 @@ function hiss(on) {
     audio.g.gain.setTargetAtTime(on ? 0.05 : 0, audio.ac.currentTime, 0.05);
   } catch (e) {}
 }
-function staticOn() { staticAt = performance.now(); sc.style.opacity = 1; if (!staticRaf) drawStatic(); hiss(true); }
-function staticOff() {
-  const wait = Math.max(0, 450 - (performance.now() - staticAt));   // always give the static a beat
-  setTimeout(() => {
-    sc.style.opacity = 0; hiss(false);
-    setTimeout(() => { if (sc.style.opacity === '0') { cancelAnimationFrame(staticRaf); staticRaf = 0; } }, 300);
-  }, wait);
+let staticCut = 0;
+function staticOn() {
+  staticAt = performance.now(); sc.style.opacity = 1; $('tune').classList.add('hidden');
+  if (!staticRaf) drawStatic(); hiss(true);
+  clearTimeout(staticCut);
+  // After a short burst, drop the static and show a calm "TUNING..." card until the picture arrives.
+  staticCut = setTimeout(() => { if (sc.style.opacity === '1') { stopStatic(); $('tune').classList.remove('hidden'); } }, STATIC_MS);
 }
-function bars(on, text) { $('bars').classList.toggle('hidden', !on); if (text) $('barsText').textContent = text; if (on) { sc.style.opacity = 0; hiss(false); } }
+function stopStatic() {
+  sc.style.opacity = 0; hiss(false);
+  setTimeout(() => { if (sc.style.opacity === '0') { cancelAnimationFrame(staticRaf); staticRaf = 0; } }, 300);
+}
+function staticOff() {
+  clearTimeout(staticCut); $('tune').classList.add('hidden');
+  const wait = Math.max(0, 250 - (performance.now() - staticAt));
+  setTimeout(stopStatic, wait);
+}
+function bars(on, text) { $('bars').classList.toggle('hidden', !on); if (text) $('barsText').textContent = text; if (on) { clearTimeout(staticCut); $('tune').classList.add('hidden'); stopStatic(); } }
 
 /* ---------- on-screen bits ---------- */
 let osdTimer = 0, bannerTimer = 0, toastTimer = 0;
@@ -335,7 +355,7 @@ const saved = store.get('rt:ch');
 const start = Math.max(0, CHANNELS.findIndex(c => c.num === saved));
 S.idx = start; S.last = start;
 screen.classList.add('on');
-screen.addEventListener('animationend', () => screen.classList.remove('on', 'off'));
+setTimeout(() => screen.classList.remove('on'), 1100);
 tune(start);
 // Warm up every channel list in the background so the guide fills in fast.
 setTimeout(() => CHANNELS.forEach((ch, k) => setTimeout(() => loadList(ch).catch(() => {}), k * 250)), 3000);
