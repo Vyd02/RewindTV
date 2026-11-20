@@ -274,7 +274,9 @@ function decadeClause(y) {
 function lineup(decId) {
   const d = DECADES.find(x => x.id === decId) || DECADES.find(x => x.id === DEFAULT_DECADE);
   const avail = (typeof window !== 'undefined' && window.AVAIL && window.AVAIL[d.id]) || null;
-  const keys = avail ? LINEUPS[d.id].filter(k => (avail[k] || 0) >= 10) : LINEUPS[d.id];
+  let keys = avail ? LINEUPS[d.id].filter(k => (avail[k] || 0) >= 10) : LINEUPS[d.id];
+  // A decade still being checked: keep the full dial (unchecked channels use live search).
+  if (keys.length < 10) keys = LINEUPS[d.id].filter(k => !avail || !(k in avail) || avail[k] >= 10);
   return keys.map((key, i) => {
     const t = THEMES[key];
     return { num: i + 1, key: d.id + ':' + key, dec: d.id, call: t.call, name: t.name, color: t.color,
