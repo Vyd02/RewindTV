@@ -1,6 +1,6 @@
 # Rewind TV
 
-A 90s cable box for Fire TV / Android TV. 23 channels of old cartoons, commercials, reruns, game shows and movies, all streaming free from the [Internet Archive](https://archive.org). Each channel runs on a half-hour schedule that's the same on every TV, so you tune in mid-show like real cable.
+A 90s cable box for Fire TV / Android TV. 30 channels of old cartoons, commercials, reruns, game shows, music videos, wrestling, anime and movies, plus late-night adult channels (29–31), all streaming free from the [Internet Archive](https://archive.org). Each channel runs on a half-hour schedule that's the same on every TV, so you tune in mid-show like real cable.
 
 ## Install on Fire TV
 

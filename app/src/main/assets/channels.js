@@ -4,6 +4,7 @@
 //
 // SAFE is added to every query. It only limits results to videos (no content filter).
 const SAFE = ' AND mediatype:movies';
+const NO_MINORS = ' AND NOT (title:teen OR subject:teen OR title:teens OR title:young OR subject:young OR title:girl OR title:girls OR title:schoolgirl OR title:school OR title:lolita OR subject:lolita OR title:minor OR title:underage OR title:child OR title:kid OR title:barely OR title:petite OR subject:hentai)';
 
 const CHANNELS = [
   { num: 2,  call: 'TOON',  name: 'Cartoon Classics',     color: '#ff3d7f', q: 'collection:classic_cartoons' },
@@ -29,4 +30,12 @@ const CHANNELS = [
   { num: 22, call: 'NOIR',  name: 'Film Noir',            color: '#9e9e9e', q: 'collection:Film_Noir' },
   { num: 23, call: 'OATER', name: 'Western Theater',      color: '#a1887f', q: 'collection:feature_films AND subject:western' },
   { num: 24, call: 'FRITE', name: 'Creature Feature',     color: '#76ff03', q: 'collection:SciFi_Horror' },
+  { num: 25, call: 'JAMZ',  name: 'Music Videos',         color: '#ff1744', q: 'subject:"music video" AND year:[1980 TO 1999]' },
+  { num: 26, call: 'SLAM',  name: '90s Wrestling',        color: '#ffc400', q: 'subject:wrestling AND (subject:1990s OR year:[1985 TO 1999])' },
+  { num: 27, call: 'OTAKU', name: 'Anime Block',          color: '#ff80ab', q: 'subject:anime AND (subject:1990s OR year:[1985 TO 1999])' },
+  { num: 28, call: 'NEWS',  name: 'Taped News',           color: '#448aff', q: 'subject:news AND collection:vhsvault' },
+  { num: 29, call: 'LATE',  name: 'Late Night',           color: '#7c4dff', q: 'subject:"late night"' },
+  // Adults only. NO_MINORS keeps out anything titled or tagged in a way that suggests minors.
+  { num: 30, call: 'SKIN',  name: 'Late-Night Thrillers', color: '#c51162', q: '(subject:"erotic thriller" OR subject:softcore)' + NO_MINORS },
+  { num: 31, call: 'XXX',   name: 'After Dark',           color: '#d50000', q: '(subject:nsfw OR subject:porn OR subject:"adult film" OR subject:xxx) AND year:[1970 TO 1999]' + NO_MINORS },
 ];
