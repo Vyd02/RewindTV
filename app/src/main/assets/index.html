@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1920, initial-scale=1">
+<title>Rewind TV</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="tv">
+  <div id="screen">
+    <video id="vid" playsinline preload="auto"></video>
+    <canvas id="static" width="192" height="108"></canvas>
+    <div id="bars" class="hidden">
+      <div class="barrow"><i style="background:#c0c0c0"></i><i style="background:#c0c000"></i><i style="background:#00c0c0"></i><i style="background:#00c000"></i><i style="background:#c000c0"></i><i style="background:#c00000"></i><i style="background:#0000c0"></i></div>
+      <div class="barrow small"><i style="background:#0000c0"></i><i style="background:#131313"></i><i style="background:#c000c0"></i><i style="background:#131313"></i><i style="background:#00c0c0"></i><i style="background:#131313"></i><i style="background:#c0c0c0"></i></div>
+      <div id="barsText">PLEASE STAND BY</div>
+    </div>
+  </div>
+
+  <!-- VCR-style corner readout -->
+  <div id="osd" class="hidden"><span id="osdNum">02</span> <span id="osdCall">TOON</span></div>
+  <div id="vcr" class="hidden"></div>
+
+  <!-- Info banner -->
+  <div id="banner" class="hidden">
+    <div id="bnChip"><div id="bnNum">02</div><div id="bnCall">TOON</div></div>
+    <div id="bnBody">
+      <div id="bnChan">Cartoon Classics</div>
+      <div id="bnTitle">Tuning…</div>
+      <div id="bnBar"><div id="bnFill"></div></div>
+      <div id="bnNext">Up next: …</div>
+    </div>
+    <div id="bnClock">12:00</div>
+  </div>
+
+  <!-- Guide -->
+  <div id="guide" class="hidden">
+    <div id="gTop">
+      <div id="gLogo"><span>REWIND</span><b>TV</b></div>
+      <div id="gHint">▲▼ browse &nbsp; OK tune &nbsp; BACK close</div>
+      <div id="gClock">12:00</div>
+    </div>
+    <div id="gHead"><div class="gc">CH</div><div class="gt" id="gNowHead">NOW</div><div class="gt" id="gNextHead">NEXT</div></div>
+    <div id="gList"><div id="gRows"></div><div id="gSel"></div></div>
+  </div>
+
+  <div id="toast" class="hidden"></div>
+  <div id="scan"></div>
+  <div id="vignette"></div>
+  <div id="crt"></div>
+</div>
+<script src="channels.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

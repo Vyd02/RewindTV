@@ -1,0 +1,103 @@
+@font-face { font-family: VCR; src: url(fonts/VT323.ttf); }
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; background: #000; overflow: hidden; cursor: none; }
+body { font-family: VCR, monospace; color: #fff; }
+
+/* Everything is laid out on a 1920x1080 stage and scaled to fit the TV. */
+#tv { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; overflow: hidden; background: #000; }
+.hidden { opacity: 0; pointer-events: none; }
+
+/* ---------- picture ---------- */
+#screen { position: absolute; inset: 0; transition: transform .55s cubic-bezier(.2,.9,.25,1.15), border-radius .55s; transform-origin: 100% 0; overflow: hidden; background: #000; }
+#vid { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+#static { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; transition: opacity .25s; }
+body.guide #screen { transform: translate(-60px, 60px) scale(.42); border-radius: 26px; box-shadow: 0 0 0 6px #fff3, 0 30px 80px #000c; }
+
+#bars { position: absolute; inset: 0; display: flex; flex-direction: column; transition: opacity .3s; }
+.barrow { display: flex; flex: 7; }
+.barrow.small { flex: 1; }
+.barrow i { flex: 1; }
+#barsText { flex: 2; background: #131313; display: flex; align-items: center; justify-content: center; font-size: 96px; letter-spacing: 8px; animation: blink 1.4s steps(2) infinite; }
+
+/* ---------- CRT dressing ---------- */
+#scan { position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(to bottom, #0000 0 3px, #0003 3px 4px); mix-blend-mode: multiply; }
+#vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at center, #0000 60%, #0008 100%); }
+#crt { position: absolute; inset: 0; pointer-events: none; background: #000; opacity: 0; }
+#screen.on { animation: tvOn 1s cubic-bezier(.3,.8,.3,1) both; }
+#screen.off { animation: tvOff .6s ease-in both; }
+@keyframes tvOn {
+  0%   { transform: scale(0, .004); filter: brightness(6); }
+  35%  { transform: scale(1, .004); filter: brightness(6); }
+  70%  { transform: scale(1, 1.02); filter: brightness(1.6); }
+  100% { transform: scale(1, 1); filter: brightness(1); }
+}
+@keyframes tvOff {
+  0%   { transform: scale(1, 1); filter: brightness(1); }
+  50%  { transform: scale(1, .004); filter: brightness(6); }
+  85%  { transform: scale(.02, .004); filter: brightness(8); }
+  100% { transform: scale(0, 0); filter: brightness(8); }
+}
+#screen.on, #screen.off { transform-origin: 50% 50%; }
+
+/* ---------- OSD ---------- */
+#osd { position: absolute; right: 90px; top: 60px; font-size: 110px; color: #4dff6a; text-shadow: 0 0 12px #4dff6a99, 4px 4px 0 #000; transition: opacity .2s; letter-spacing: 4px; }
+#osd #osdCall { font-size: 70px; }
+#vcr { position: absolute; left: 90px; top: 60px; font-size: 96px; color: #fff; text-shadow: 4px 4px 0 #000; transition: opacity .2s; }
+#vcr.blink { animation: blink 1s steps(2) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+
+/* ---------- banner ---------- */
+#banner { position: absolute; left: 80px; right: 80px; bottom: 70px; height: 210px; display: flex; align-items: stretch; gap: 0;
+  background: linear-gradient(180deg, #2a1a6ef2, #120a3ef2); border: 4px solid #8f7bff; border-radius: 22px; overflow: hidden;
+  box-shadow: 0 20px 60px #000a; transition: transform .45s cubic-bezier(.2,1.2,.3,1), opacity .3s; }
+#banner.hidden { transform: translateY(280px); opacity: 1; }
+#bnChip { width: 230px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--ch, #ff3d7f); color: #10082c; }
+#bnNum { font-size: 120px; line-height: .9; }
+#bnCall { font-size: 46px; letter-spacing: 4px; }
+#bnBody { flex: 1; padding: 22px 34px; display: flex; flex-direction: column; justify-content: center; min-width: 0; }
+#bnChan { font-size: 40px; color: #b9adff; letter-spacing: 2px; }
+#bnTitle { font-size: 62px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#bnBar { height: 14px; background: #ffffff22; border-radius: 7px; margin: 8px 0; overflow: hidden; }
+#bnFill { height: 100%; width: 0; background: var(--ch, #ff3d7f); border-radius: 7px; transition: width 1s linear; }
+#bnNext { font-size: 36px; color: #ffffffaa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#bnClock { width: 220px; display: flex; align-items: center; justify-content: center; font-size: 64px; color: #ffe066; border-left: 3px solid #8f7bff55; }
+
+/* ---------- guide ---------- */
+#guide { position: absolute; inset: 0; transition: opacity .35s; pointer-events: none;
+  background: linear-gradient(160deg, #1b0e5c 0%, #3b1386 45%, #0b2a7a 100%); z-index: -0; }
+body.guide #guide { opacity: 1; }
+#tv > #guide { z-index: 0; }
+#screen { z-index: 1; }
+#guide.hidden { opacity: 0; }
+#gTop { position: absolute; left: 70px; top: 50px; width: 1050px; }
+#gLogo { font-size: 130px; line-height: 1; letter-spacing: 6px; }
+#gLogo span { background: linear-gradient(180deg, #fff 30%, #ff7ad9 60%, #7a5cff); -webkit-background-clip: text; color: transparent; filter: drop-shadow(5px 5px 0 #0008); }
+#gLogo b { font-weight: normal; margin-left: 18px; padding: 0 18px; border-radius: 14px; background: #ffe066; color: #1b0e5c; display: inline-block; animation: wobble 3s ease-in-out infinite; }
+@keyframes wobble { 0%,100% { transform: rotate(-4deg); } 50% { transform: rotate(4deg) scale(1.06); } }
+#gHint { font-size: 36px; color: #c9bfff; margin-top: 10px; }
+#gClock { font-size: 80px; color: #ffe066; margin-top: 10px; text-shadow: 4px 4px 0 #0007; }
+#gHead { position: absolute; left: 70px; right: 70px; top: 540px; height: 60px; display: flex; font-size: 40px; color: #ffe066; gap: 14px; }
+#gHead .gc { width: 230px; padding-left: 20px; }
+#gHead .gt { flex: 1; padding-left: 20px; }
+#gList { position: absolute; left: 70px; right: 70px; top: 605px; bottom: 50px; overflow: hidden;
+  -webkit-mask-image: linear-gradient(180deg, #000 80%, #0000); }
+#gRows { position: absolute; left: 0; right: 0; top: 0; transition: transform .3s cubic-bezier(.2,.9,.3,1); }
+.gr { height: 96px; display: flex; gap: 14px; padding: 7px 0; }
+.gr > div { border-radius: 14px; display: flex; align-items: center; padding: 0 20px; font-size: 44px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gr .gc { width: 230px; background: #ffffff18; gap: 14px; }
+.gr .gc b { font-weight: normal; color: var(--ch); font-size: 52px; min-width: 60px; }
+.gr .gt { flex: 1; background: #ffffff10; min-width: 0; display: block; line-height: 82px; }
+.gr .gt.now { background: #ffffff20; }
+.gr .gt .tag { font-size: 30px; color: #ffffff88; margin-right: 10px; }
+#gSel { position: absolute; left: -6px; right: -6px; top: 1px; height: 94px; border: 6px solid #ffe066; border-radius: 18px; pointer-events: none;
+  box-shadow: 0 0 30px #ffe06688, inset 0 0 20px #ffe06633; transition: transform .3s cubic-bezier(.2,.9,.3,1); animation: glow 1.6s ease-in-out infinite; }
+@keyframes glow { 50% { box-shadow: 0 0 50px #ffe066cc, inset 0 0 30px #ffe06655; } }
+
+/* ---------- toast ---------- */
+#toast { position: absolute; left: 50%; top: 80px; transform: translateX(-50%); font-size: 48px; padding: 18px 40px; background: #000c; border: 3px solid #fff6; border-radius: 16px; transition: opacity .3s, transform .3s; z-index: 5; }
+#toast.hidden { transform: translateX(-50%) translateY(-30px); }
+
+#osd, #vcr, #banner, #toast { z-index: 4; }
+#scan, #vignette { z-index: 6; }
+#crt { z-index: 7; }
