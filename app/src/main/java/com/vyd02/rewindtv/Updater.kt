@@ -22,7 +22,9 @@ import java.net.URL
  *  2. If a new APK release exists, it's downloaded and the Fire TV install screen pops up.
  */
 object Updater {
-    private const val RAW = "https://raw.githubusercontent.com/Vyd02/RewindTV/main/app/src/main/assets/"
+    private const val RAW = "https://raw.githubusercontent.com/Vyd02/RewindTV/"
+    private const val PATH = "/app/src/main/assets/"
+    private const val HEAD = "https://api.github.com/repos/Vyd02/RewindTV/commits/main"
     private const val LATEST = "https://api.github.com/repos/Vyd02/RewindTV/releases/latest"
     private val WEB_FILES = listOf("index.html", "style.css", "app.js", "channels.js")
 
@@ -38,20 +40,38 @@ object Updater {
 
     private fun webDir(ctx: Context) = File(ctx.filesDir, "web")
 
-    /** Download the newest web files. Only swaps them in if every file came down OK. */
+    /** Short id of the screen files in use ("" = the ones built into the APK). */
+    fun webVersion(ctx: Context): String = File(webDir(ctx), ".sha").let { if (it.isFile) it.readText().take(7) else "" }
+
+    /** Set when this launch pulled down newer screen files than last time. */
+    @Volatile var freshWeb = false
+
+    /**
+     * Download the newest web files. Asks GitHub for the exact latest commit first, so a
+     * cached copy can never be served. Only swaps files in if every one came down OK.
+     */
     fun syncWeb(ctx: Context): Boolean {
         val tmp = File(ctx.filesDir, "web_tmp").apply { deleteRecursively(); mkdirs() }
         try {
+            val sha = try {
+                val c = open(HEAD); c.setRequestProperty("Accept", "application/vnd.github.sha")
+                if (c.responseCode == 200) c.inputStream.bufferedReader().use { it.readText().trim() } else "main"
+            } catch (e: Exception) { "main" }
+            if (sha != "main" && File(webDir(ctx), ".sha").let { it.isFile && it.readText() == sha }) return true
             for (name in WEB_FILES) {
-                val c = open(RAW + name + "?t=" + System.currentTimeMillis() / 60000)
+                val c = open(RAW + sha + PATH + name + "?t=" + System.currentTimeMillis() / 60000)
                 if (c.responseCode != 200) return false
                 val bytes = c.inputStream.use { it.readBytes() }
                 if (bytes.size < 50) return false
                 File(tmp, name).writeBytes(bytes)
             }
+            File(tmp, ".sha").writeText(sha)
             val dir = webDir(ctx)
+            val had = dir.isDirectory
             dir.deleteRecursively()
-            return tmp.renameTo(dir)
+            val ok = tmp.renameTo(dir)
+            if (ok && had) freshWeb = true
+            return ok
         } catch (e: Exception) {
             return false
         } finally {

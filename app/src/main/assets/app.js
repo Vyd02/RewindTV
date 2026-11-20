@@ -38,7 +38,8 @@ function nativeVideo() {
 }
 const vid = NATIVE ? nativeVideo() : $('vid');
 if (NATIVE) { document.documentElement.classList.add('native'); document.body.classList.add('native'); }
-const VERSION = (window.Android && Android.version) ? 'v' + Android.version() : 'v1.0.5 or older';
+const WEBV = (window.Android && Android.webVersion) ? Android.webVersion() : '';
+const VERSION = ((window.Android && Android.version) ? 'v' + Android.version() : 'v1.0.5 or older') + (WEBV ? ' · screen ' + WEBV : '');
 $('gVer').textContent = 'Rewind TV ' + VERSION + (NATIVE ? '' : ' · web player');
 function _v(type, pos, dur) {
   if (!NATIVE) return;
@@ -516,7 +517,7 @@ S.idx = start; S.last = start;
 screen.classList.add('on');
 setTimeout(() => screen.classList.remove('on'), 1100);
 tune(start);
-setTimeout(() => toast('Rewind TV ' + VERSION, 3500), 1200);
+setTimeout(() => toast((window.Android && Android.freshWeb && Android.freshWeb()) ? '✨ Updated! New changes loaded' : 'Rewind TV ' + VERSION, 3500), 1200);
 // Warm up every channel list in the background so the guide fills in fast.
 setTimeout(() => CHANNELS.forEach((ch, k) => setTimeout(() => loadList(ch).catch(() => {}), k * 250)), 3000);
 })();

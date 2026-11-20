@@ -94,7 +94,7 @@ class MainActivity : Activity() {
         val ready = java.util.concurrent.CountDownLatch(1)
         pool.execute { Updater.syncWeb(this); ready.countDown() }
         pool.execute {
-            ready.await(3, java.util.concurrent.TimeUnit.SECONDS)
+            ready.await(6, java.util.concurrent.TimeUnit.SECONDS)
             web.post { web.loadUrl("https://appassets.androidplatform.net/assets/index.html") }
             // Then look for a newer APK in the background.
             Thread.sleep(8000)
@@ -186,6 +186,8 @@ class MainActivity : Activity() {
         }
 
         @JavascriptInterface fun version(): String = BuildConfig.VERSION_NAME
+        @JavascriptInterface fun webVersion(): String = Updater.webVersion(this@MainActivity)
+        @JavascriptInterface fun freshWeb(): Boolean = Updater.freshWeb.also { Updater.freshWeb = false }
         @JavascriptInterface fun alive() { pageAlive = true; runOnUiThread { errorView.visibility = View.GONE } }
         @JavascriptInterface fun vLoad(url: String, startMs: Double) { runOnUiThread { video.load(url, startMs.toLong()) } }
         @JavascriptInterface fun vPlay() { runOnUiThread { video.play() } }
