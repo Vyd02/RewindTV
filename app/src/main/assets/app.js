@@ -156,13 +156,61 @@ function videos(id) {
 }
 
 /* ---------- tapes you've blocked (hold fast-forward) ---------- */
-const blocked = new Set(store.get('rt:block') || []);
+// Saved as { id: title }. Older saves were a plain list of ids.
+const blockRaw = store.get('rt:block') || {};
+const blockMap = Array.isArray(blockRaw) ? Object.fromEntries(blockRaw.map(id => [id, id])) : blockRaw;
+const blocked = { has: id => Object.prototype.hasOwnProperty.call(blockMap, id) };
+let lastBlock = null;
+function saveBlocks() { store.set('rt:block', blockMap); }
 function blockCurrent() {
   const p = S.playing; if (!p) return;
-  const id = p.list[p.i % p.list.length].id;
-  blocked.add(id); store.set('rt:block', [...blocked]);
-  toast('🚫 Blocked. You won’t see this tape again', 2500);
+  const item = p.list[p.i % p.list.length];
+  blockMap[item.id] = item.title; saveBlocks();
+  lastBlock = { id: item.id, at: Date.now(), ch: p.ch, list: p.list, i: p.i, ms: Math.round((vid.currentTime || 0) * 1000), slot: p.slot };
+  toast('🚫 Blocked “' + item.title.slice(0, 40) + '” · press ⏪ to undo', 10000);
   skip();
+}
+function undoBlock() {
+  const b = lastBlock; lastBlock = null;
+  delete blockMap[b.id]; saveBlocks();
+  toast('↩ Unblocked. Back to your tape', 2500);
+  staticOn();
+  play(b.ch, b.list, b.i, b.ms, S.token, 0, b.slot);
+}
+
+/* Blocked Tapes list: open the guide, then press ⏯ */
+let blkSel = 0;
+function blockedIds() { return Object.keys(blockMap); }
+function openBlocked() {
+  S.blk = true; blkSel = 0; drawBlocked(); $('toast').classList.add('hidden');
+  $('blk').classList.remove('hidden');
+}
+function closeBlocked() { S.blk = false; $('blk').classList.add('hidden'); }
+function drawBlocked() {
+  const ids = blockedIds();
+  blkSel = Math.max(0, Math.min(blkSel, ids.length - 1));
+  $('blkList').innerHTML = ids.length
+    ? ids.map((id, k) => `<div class="br${k === blkSel ? ' sel' : ''}">${blockMap[id].replace(/</g, '&lt;')}</div>`).join('')
+    : '<div class="br empty">Nothing blocked. Hold ⏩ on a tape you never want to see.</div>';
+  const top = Math.max(0, blkSel - 3);
+  $('blkList').style.transform = `translateY(${-top * 86}px)`;
+}
+function blockedKey(key) {
+  const ids = blockedIds();
+  switch (key) {
+    case 'Up': blkSel--; return drawBlocked();
+    case 'Down': blkSel++; return drawBlocked();
+    case 'OK': {
+      if (!ids.length) return;
+      const id = ids[blkSel]; const t = blockMap[id];
+      delete blockMap[id]; saveBlocks();
+      toast('✅ Unblocked “' + t.slice(0, 40) + '”', 2500);
+      const row = $('blkList').children[blkSel];
+      if (row) { row.classList.add('gone'); setTimeout(drawBlocked, 350); } else drawBlocked();
+      return;
+    }
+    case 'Back': case 'PlayPause': case 'Left': case 'Guide': return closeBlocked();
+  }
 }
 
 /* ---------- tuning ---------- */
@@ -367,6 +415,8 @@ function closeGuide() { if (NATIVE && S.guide) Android.vRect(0, 0, 1, 1); S.guid
 
 /* ---------- remote ---------- */
 function remote(key) {
+  if (S.blk) return blockedKey(key);
+  if (key === 'Rewind' && lastBlock && Date.now() - lastBlock.at < 10000) return undoBlock();
   if (/^\d$/.test(key)) return digit(key);
   if (S.guide) {
     switch (key) {
@@ -375,6 +425,7 @@ function remote(key) {
       case 'ChannelUp': return moveGuide(S.gSel - 5);
       case 'ChannelDown': return moveGuide(S.gSel + 5);
       case 'OK': case 'Right': { const k = S.gSel; closeGuide(); if (k !== S.idx) tune(k); else showBanner(); return; }
+      case 'PlayPause': return openBlocked();
       case 'Back': case 'Guide': case 'Left': return closeGuide();
     }
     return;
