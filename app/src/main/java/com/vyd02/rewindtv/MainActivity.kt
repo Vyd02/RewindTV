@@ -33,7 +33,7 @@ class MainActivity : Activity() {
                 or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY)
 
         val loader = WebViewAssetLoader.Builder()
-            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
+            .addPathHandler("/assets/", Updater.Handler(this))
             .build()
 
         web = WebView(this)
@@ -57,7 +57,17 @@ class MainActivity : Activity() {
         web.isFocusableInTouchMode = true
         setContentView(web)
         web.requestFocus()
-        web.loadUrl("https://appassets.androidplatform.net/assets/index.html")
+
+        // Grab the newest screen files from GitHub (wait up to 3 seconds), then turn the TV on.
+        val ready = java.util.concurrent.CountDownLatch(1)
+        pool.execute { Updater.syncWeb(this); ready.countDown() }
+        pool.execute {
+            ready.await(3, java.util.concurrent.TimeUnit.SECONDS)
+            web.post { web.loadUrl("https://appassets.androidplatform.net/assets/index.html") }
+            // Then look for a newer APK in the background.
+            Thread.sleep(8000)
+            Updater.checkApk(this) { msg -> web.post { web.evaluateJavascript("window.RT && RT.toast(${JSONObject.quote(msg)})", null) } }
+        }
     }
 
     /** Keys the WebView does not turn into normal browser keys get passed to the page by name. */
@@ -97,6 +107,10 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         web.evaluateJavascript("window.RT && RT.wake()", null)
+        val apk = Updater.pendingApk
+        if (apk != null && (android.os.Build.VERSION.SDK_INT < 26 || packageManager.canRequestPackageInstalls())) {
+            Updater.install(this, apk)
+        }
     }
 
     override fun onDestroy() {

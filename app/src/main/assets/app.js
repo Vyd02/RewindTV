@@ -349,7 +349,7 @@ addEventListener('keydown', e => {
 function sleep() { S.slept = true; vid.pause(); hiss(false); }
 function wake() { if (S.slept) { S.slept = false; tune(S.idx); } }
 
-window.RT = { remote, _got, sleep, wake };
+window.RT = { remote, _got, sleep, wake, toast: t => toast(t, 5000) };
 
 const saved = store.get('rt:ch');
 const start = Math.max(0, CHANNELS.findIndex(c => c.num === saved));
