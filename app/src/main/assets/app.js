@@ -96,12 +96,29 @@ const store = {
 };
 
 /* ---------- channel lists ---------- */
+// Hand-checked tape lists (only sharp, watchable copies) built by tools/curate.py and kept on GitHub.
+const LISTS = location.hostname === 'localhost' ? '/lists/' : 'https://raw.githubusercontent.com/Vyd02/RewindTV/main/lists/';
+const bust = () => '?h=' + Math.floor(Date.now() / 36e5);
+function curated(ch) {
+  const [dec, theme] = ch.key.split(':');
+  return getJSON(LISTS + dec + '/' + theme + '.json' + bust()).then(d => {
+    const docs = (d.items || []).map(x => ({ id: x.id, title: cleanTitle(x.t), eps: x.e }));
+    if (docs.length < 5) throw new Error('thin');
+    docs.sort((a, b) => a.id < b.id ? -1 : 1);
+    return arrange(ch, docs);
+  });
+}
 function loadList(ch) {
   if (S.lists[ch.key]) return S.lists[ch.key];
+  return (S.lists[ch.key] = curated(ch).catch(() => { delete S.lists[ch.key]; return searchList(ch); }).then(l => (S.lists[ch.key] = Promise.resolve(l), l)));
+}
+// Fallback: live search (unchecked quality) if the curated list can't be reached.
+function searchList(ch) {
+  if (S.lists['s:' + ch.key]) return S.lists['s:' + ch.key];
   const key = 'rt:list:' + ch.key + ':' + hash(ch.q + SAFE);
   const cached = store.get(key);
   if (cached && Date.now() - cached.at < LIST_TTL && cached.docs.length) {
-    return (S.lists[ch.key] = Promise.resolve(arrange(ch, cached.docs)));
+    return Promise.resolve(arrange(ch, cached.docs));
   }
   const url = 'https://archive.org/advancedsearch.php?' + new URLSearchParams([
     ['q', '(' + ch.q + ')' + SAFE], ['fl[]', 'identifier'], ['fl[]', 'title'],
@@ -113,8 +130,8 @@ function loadList(ch) {
     docs.sort((a, b) => a.id < b.id ? -1 : 1);         // same order on every box
     store.set(key, { at: Date.now(), docs });
     return arrange(ch, docs);
-  }).catch(e => { delete S.lists[ch.key]; if (cached) return arrange(ch, cached.docs); throw e; });
-  return (S.lists[ch.key] = p);
+  }).catch(e => { delete S.lists['s:' + ch.key]; if (cached) return arrange(ch, cached.docs); throw e; });
+  return (S.lists['s:' + ch.key] = p);
 }
 // A fresh shuffle each week, the same for everybody watching.
 function arrange(ch, docs) { const week = Math.floor(Date.now() / (7 * 864e5)); return shuffle(docs, hash(ch.key + ':' + week)); }
@@ -129,7 +146,14 @@ function scheduleAt(ch, list, t) {
 // Every video gets a list of copies, best quality first. If the best copy won't play
 // (or can't keep up with the internet), the next copy down is tried before giving up.
 const VID_EXT = NATIVE ? /\.(mp4|m4v|mkv|webm|mpe?g|mov)$/i : /\.mp4$/i;
-function videos(id) {
+function videos(item) {
+  const id = item.id;
+  if (item.eps && item.eps.length) {
+    const url = n => 'https://archive.org/download/' + encodeURIComponent(id) + '/' + n.split('/').map(encodeURIComponent).join('/');
+    return Promise.resolve(item.eps.map(e => ({
+      cands: [e.n].concat(e.a || []).map(url), heights: [e.h], len: e.len || 0, title: e.t ? cleanTitle(e.t) : '',
+    })));
+  }
   if (S.meta[id]) return S.meta[id];
   return (S.meta[id] = getJSON('https://archive.org/metadata/' + encodeURIComponent(id)).then(m => {
     const files = (m.files || []).filter(f => VID_EXT.test(f.name));
@@ -154,7 +178,7 @@ function videos(id) {
           cands: g.map(url),
           heights: g.map(height),
           len: Math.max(...g.map(f => parseFloat(f.length) || 0)),
-          title: cleanTitle(named ? named.title : ''),
+          title: named ? cleanTitle(named.title) : '',
         };
       });
     if (!list.length) throw new Error('no video');
@@ -228,7 +252,7 @@ async function tune(idx, opts = {}) {
   S.idx = idx;
   const ch = CHANNELS[idx];
   const token = ++S.token;
-  store.set('rt:ch', { dec: ch.dec, num: ch.num }); store.set('rt:dec', ch.dec);
+  store.set('rt:ch', { dec: ch.dec, num: ch.num, key: ch.key }); store.set('rt:dec', ch.dec);
   S.paused = false; vcr('');
   staticOn();
   osd(ch);
@@ -252,7 +276,7 @@ async function play(ch, list, i, offsetMs, token, tries, slot, k = 0) {
   while (blocked.has(list[i % list.length].id) && hop++ < list.length) { i++; offsetMs = 0; slot = null; }
   const item = list[i % list.length];
   let files;
-  try { files = await videos(item.id); } catch (e) {
+  try { files = await videos(item); } catch (e) {
     if (token === S.token) return play(ch, list, i + 1, 0, token, tries + 1, slot);
     return;
   }
@@ -301,7 +325,7 @@ function prefetch() {
   const n = CHANNELS.length;
   [S.idx + 1, S.idx - 1, S.last].forEach(k => {
     const ch = CHANNELS[((k % n) + n) % n];
-    loadList(ch).then(list => videos(scheduleAt(ch, list, Date.now()).item.id)).catch(() => {});
+    loadList(ch).then(list => videos(scheduleAt(ch, list, Date.now()).item)).catch(() => {});
   });
 }
 vid.addEventListener('waiting', () => { clearTimeout(S.stallTimer); S.stallTimer = setTimeout(() => { if (vid.readyState < 3 && !S.paused) downgrade(); }, STALL_MS); });
@@ -511,12 +535,20 @@ function wake() { if (S.slept) { S.slept = false; tune(S.idx); } }
 window.RT = { remote, _got, _v, sleep, wake, toast: t => toast(t, 5000) };
 if (window.Android && Android.alive) Android.alive();
 
+function boot() {
 const saved = store.get('rt:ch');
-const start = Math.max(0, CHANNELS.findIndex(c => saved && c.num === saved.num && c.dec === saved.dec));
-S.idx = start; S.last = start;
+  const start = Math.max(0, CHANNELS.findIndex(c => saved && (saved.key ? c.key === saved.key : c.num === saved.num && c.dec === saved.dec)));
+  S.idx = start; S.last = start;
+  setTimeout(() => screen.classList.remove('on'), 1100);
+  tune(start);
+}
+// Which channels have enough clean tapes (from the curator); thin ones are left off the dial.
 screen.classList.add('on');
-setTimeout(() => screen.classList.remove('on'), 1100);
-tune(start);
+staticOn();
+Promise.race([getJSON(LISTS + 'index.json' + bust()), new Promise((_, no) => setTimeout(no, 5000))])
+  .then(ix => { window.AVAIL = ix; CHANNELS = lineup(DEC); G.list = CHANNELS; })
+  .catch(() => {})
+  .then(boot);
 setTimeout(() => toast((window.Android && Android.freshWeb && Android.freshWeb()) ? '✨ Updated! New changes loaded' : 'Rewind TV ' + VERSION, 3500), 1200);
 // Warm up every channel list in the background so the guide fills in fast.
 setTimeout(() => CHANNELS.forEach((ch, k) => setTimeout(() => loadList(ch).catch(() => {}), k * 250)), 3000);

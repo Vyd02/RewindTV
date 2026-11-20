@@ -9,6 +9,27 @@ const SAFE = ' AND mediatype:movies' +
 const NO_MINORS = ' AND NOT (title:teen OR subject:teen OR title:teens OR title:young OR subject:young OR title:girl OR title:girls OR title:schoolgirl OR title:school OR title:lolita OR subject:lolita OR title:minor OR title:underage OR title:child OR title:kid OR title:barely OR title:petite OR subject:hentai)';
 
 const THEMES = {
+  // ---- networks & blocks ----
+  swim:         { call: 'SWIM', name: 'Adult Swim', color: '#d4d4d4', q: '(title:"adult swim" OR subject:"adult swim" OR subject:adultswim OR title:adultswim)' },
+  toonami:      { call: 'TNAMI', name: 'Toonami', color: '#00e5ff', q: '(title:toonami OR subject:toonami)' },
+  cn:           { call: 'CN', name: 'Cartoon Network', color: '#f5f5f5', q: '(title:"cartoon network" OR subject:"cartoon network")' },
+  boomerang:    { call: 'BOOM', name: 'Boomerang', color: '#ff4081', q: '(title:boomerang AND (subject:cartoon OR subject:"cartoon network" OR subject:cartoons))' },
+  nick:         { call: 'NICK', name: 'Nickelodeon / Nicktoons', color: '#ff7a00', q: '(title:nickelodeon OR subject:nickelodeon OR title:nicktoons OR subject:nicktoons OR title:snick)' },
+  nickjr:       { call: 'NKJR', name: 'Nick Jr.', color: '#ffd600', q: '(title:"nick jr" OR subject:"nick jr" OR title:noggin OR subject:noggin)' },
+  nickatnite:   { call: 'NITE', name: 'Nick at Nite', color: '#536dfe', q: '(title:"nick at nite" OR subject:"nick at nite" OR title:"tv land" OR subject:"tv land")' },
+  disney:       { call: 'DSNY', name: 'Disney Channel', color: '#2979ff', q: '(title:"disney channel" OR subject:"disney channel" OR title:"toon disney" OR subject:"toon disney")' },
+  foxkids:      { call: 'FOXK', name: 'Fox Kids', color: '#ff1744', q: '(title:"fox kids" OR subject:"fox kids" OR title:"fox box" OR title:"4kids")' },
+  kidswb:       { call: 'KWB', name: 'Kids WB', color: '#00b0ff', q: '(title:"kids wb" OR subject:"kids wb")' },
+  abcsat:       { call: '1SAT', name: 'One Saturday Morning', color: '#ffab00', q: '(title:"one saturday morning" OR title:"abc saturday morning" OR subject:"one saturday morning")' },
+  jetix:        { call: 'JETX', name: 'Jetix', color: '#76ff03', q: '(title:jetix OR subject:jetix)' },
+  pbskids:      { call: 'PBSK', name: 'PBS Kids', color: '#00c853', q: '(title:"pbs kids" OR subject:"pbs kids")' },
+  tgif:         { call: 'TGIF', name: 'TGIF', color: '#e040fb', q: '(title:tgif OR subject:tgif)' },
+  mtv:          { call: 'MTV', name: 'MTV', color: '#ffeb3b', q: '(title:mtv OR subject:mtv)' },
+  vh1:          { call: 'VH1', name: 'VH1', color: '#ff5252', q: '(title:vh1 OR subject:vh1)' },
+  comedycentral: { call: 'CMDY', name: 'Comedy Central', color: '#ffc400', q: '(title:"comedy central" OR subject:"comedy central")' },
+  scifi:        { call: 'SCIFI', name: 'Sci-Fi Channel', color: '#7c4dff', q: '(title:"sci-fi channel" OR subject:"sci-fi channel" OR title:"scifi channel")' },
+  upallnight:   { call: 'UPALL', name: 'Up All Night', color: '#651fff', q: '(title:"up all night" OR subject:"up all night" OR title:monstervision)' },
+  // ---- channel types ----
   cartoons:    { call: 'TOON',  name: 'Cartoons',            color: '#ff3d7f', q: '(subject:cartoon OR subject:cartoons OR subject:animation OR collection:classic_cartoons)' },
   satam:       { call: 'SAT',   name: 'Saturday Morning',    color: '#ffb300', q: 'subject:"saturday morning"' },
   kidbreaks:   { call: 'KIDBK', name: 'Kids Network Breaks', color: '#ff9100', q: 'collection:classic_tv_commercials AND (subject:nickelodeon OR subject:"cartoon network" OR subject:"fox kids" OR subject:"kids wb" OR subject:disney)' },
@@ -119,6 +140,12 @@ const LINEUPS = {
     "xxx"
   ],
   "80s": [
+    "nick",
+    "nickatnite",
+    "disney",
+    "mtv",
+    "vh1",
+    "upallnight",
     "cartoons",
     "satam",
     "toyads",
@@ -146,6 +173,22 @@ const LINEUPS = {
     "xxx"
   ],
   "90s": [
+    "toonami",
+    "cn",
+    "nick",
+    "nickjr",
+    "nickatnite",
+    "disney",
+    "foxkids",
+    "kidswb",
+    "abcsat",
+    "pbskids",
+    "tgif",
+    "mtv",
+    "vh1",
+    "comedycentral",
+    "scifi",
+    "upallnight",
     "cartoons",
     "satam",
     "kidbreaks",
@@ -175,6 +218,23 @@ const LINEUPS = {
     "xxx"
   ],
   "00s": [
+    "swim",
+    "toonami",
+    "cn",
+    "boomerang",
+    "nick",
+    "nickjr",
+    "nickatnite",
+    "disney",
+    "foxkids",
+    "kidswb",
+    "abcsat",
+    "jetix",
+    "pbskids",
+    "mtv",
+    "vh1",
+    "comedycentral",
+    "scifi",
     "cartoons",
     "satam",
     "kidbreaks",
@@ -213,7 +273,9 @@ function decadeClause(y) {
 
 function lineup(decId) {
   const d = DECADES.find(x => x.id === decId) || DECADES.find(x => x.id === DEFAULT_DECADE);
-  return LINEUPS[d.id].map((key, i) => {
+  const avail = (typeof window !== 'undefined' && window.AVAIL && window.AVAIL[d.id]) || null;
+  const keys = avail ? LINEUPS[d.id].filter(k => (avail[k] || 0) >= 10) : LINEUPS[d.id];
+  return keys.map((key, i) => {
     const t = THEMES[key];
     return { num: i + 1, key: d.id + ':' + key, dec: d.id, call: t.call, name: t.name, color: t.color,
              q: '(' + t.q + ')' + decadeClause(d.y) + (t.adult ? NO_MINORS : '') };
