@@ -36,5 +36,5 @@ Edit `app/src/main/assets/channels.js`. Each channel is just an Internet Archive
 ## Notes
 
 - Videos come from the Internet Archive. What's on each channel depends on what people have uploaded there.
-- An adult-content filter is applied to every channel, but archive uploads are tagged by the public, so it isn't perfect.
+- No content filter: channels show whatever is on the Internet Archive for that search.
 - The signing key (`app/rewindtv.keystore`) is committed on purpose so every build can update the last one.

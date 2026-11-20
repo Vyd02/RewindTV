@@ -2,8 +2,8 @@
 // Each channel is an Internet Archive search. To add a channel, copy a line,
 // give it a new number, and change the query. Test a query at archive.org/advancedsearch.php
 //
-// SAFE is added to every query to keep adult stuff off the dial.
-const SAFE = ' AND mediatype:movies AND NOT (subject:nsfw OR subject:adult OR subject:porn OR subject:erotica OR subject:sex OR subject:explicit OR title:nsfw OR title:sex OR title:nude OR title:naked OR title:molester OR title:erotic OR title:xxx OR title:uncensored)';
+// SAFE is added to every query. It only limits results to videos (no content filter).
+const SAFE = ' AND mediatype:movies';
 
 const CHANNELS = [
   { num: 2,  call: 'TOON',  name: 'Cartoon Classics',     color: '#ff3d7f', q: 'collection:classic_cartoons' },
