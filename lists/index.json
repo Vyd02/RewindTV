@@ -3,15 +3,20 @@
   "abcsat": 6,
   "boomerang": 34,
   "cn": 90,
+  "comedycentral": 90,
   "disney": 90,
   "foxkids": 90,
   "jetix": 90,
   "kidswb": 90,
+  "mtv": 90,
   "nick": 90,
   "nickatnite": 51,
   "nickjr": 90,
+  "pbskids": 90,
+  "scifi": 87,
   "swim": 90,
-  "toonami": 90
+  "toonami": 90,
+  "vh1": 90
  },
  "50s": {
   "ads": 29,
@@ -84,18 +89,24 @@
  },
  "80s": {
   "ads": 90,
+  "anime": 90,
   "cartoons": 90,
   "disney": 90,
   "gameshow": 90,
   "mtv": 90,
+  "music": 90,
+  "news": 90,
   "nick": 90,
   "nickatnite": 10,
   "satam": 83,
   "sitcom": 90,
+  "sports": 90,
   "toyads": 14,
   "tv": 90,
   "upallnight": 15,
-  "vh1": 51
+  "vh1": 51,
+  "vhs": 90,
+  "wrestling": 90
  },
  "90s": {
   "abcsat": 31,
