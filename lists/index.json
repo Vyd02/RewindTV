@@ -1,5 +1,18 @@
 {
- "00s": {},
+ "00s": {
+  "abcsat": 6,
+  "boomerang": 34,
+  "cn": 90,
+  "disney": 90,
+  "foxkids": 90,
+  "jetix": 90,
+  "kidswb": 90,
+  "nick": 90,
+  "nickatnite": 51,
+  "nickjr": 90,
+  "swim": 90,
+  "toonami": 90
+ },
  "50s": {
   "ads": 29,
   "anime": 19,
@@ -51,6 +64,8 @@
   "cartoons": 90,
   "comedyfilm": 38,
   "gameshow": 90,
+  "horror": 90,
+  "latenight": 90,
   "movies": 90,
   "music": 90,
   "news": 18,
@@ -59,16 +74,26 @@
   "satam": 32,
   "school": 90,
   "sitcom": 84,
+  "skin": 15,
   "trailers": 90,
   "tv": 90,
   "vhs": 90,
-  "wrestling": 42
+  "western": 90,
+  "wrestling": 42,
+  "xxx": 42
  },
  "80s": {
+  "ads": 90,
+  "cartoons": 90,
   "disney": 90,
+  "gameshow": 90,
   "mtv": 90,
   "nick": 90,
   "nickatnite": 10,
+  "satam": 83,
+  "sitcom": 90,
+  "toyads": 14,
+  "tv": 90,
   "upallnight": 15,
   "vh1": 51
  },

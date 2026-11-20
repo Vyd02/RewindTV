@@ -136,10 +136,57 @@ function searchList(ch) {
 // A fresh shuffle each week, the same for everybody watching.
 function arrange(ch, docs) { const week = Math.floor(Date.now() / (7 * 864e5)); return shuffle(docs, hash(ch.key + ':' + week)); }
 
+/* ---------- live broadcast clock ----------
+   Each channel runs its tapes back-to-back, around the clock, reshuffled every day.
+   Everyone tuning in at the same moment lands on the same show at the same spot,
+   and when you come back later the channel has moved on, like real TV. */
+const DAY_MS = 864e5, GUESS_LEN = 22 * 60;
+const TL = {};
+function timeline(ch, list, t) {
+  const day = Math.floor((t - new Date(t).getTimezoneOffset() * 6e4) / DAY_MS);
+  const key = ch.key + ':' + day + ':' + list.length;
+  if (TL[key]) return TL[key];
+  const r = rng(hash(key));
+  const entries = [];
+  list.forEach((item, i) => {
+    const eps = item.eps && item.eps.length ? item.eps : [null];
+    // Series with lots of episodes get a couple of random ones today, not all of them.
+    const picks = shuffle(eps.map((_, k) => k), hash(key + item.id)).slice(0, Math.min(eps.length, 2));
+    for (const k of picks) {
+      const len = Math.max(30, (eps[k] && eps[k].len) || GUESS_LEN);
+      if (len <= 3600) { entries.push({ i, slot: k, len, from: 0 }); continue; }
+      // Long tapes (full VHS recordings, marathons) air as half-hour blocks, a couple per day.
+      const blocks = Math.floor(len / 1800);
+      for (const b of shuffle([...Array(blocks).keys()], hash(key + item.id + k)).slice(0, 2))
+        entries.push({ i, slot: k, len: Math.min(1800, len - b * 1800), from: b * 1800 });
+    }
+  });
+  const order = shuffle(entries, hash(key + 'order'));
+  let acc = 0;
+  for (const e of order) { e.at = acc; acc += e.len; }
+  return (TL[key] = { order, total: acc, dayStart: day * DAY_MS + new Date(t).getTimezoneOffset() * 6e4 });
+}
+// What's on at time t: which tape, which episode, when it started.
 function scheduleAt(ch, list, t) {
-  const slot = Math.floor(t / SLOT_MS);
-  const i = (slot + hash(ch.key)) % list.length;
-  return { item: list[i], i, slot, start: slot * SLOT_MS };
+  const tl = timeline(ch, list, t);
+  const pos = ((t - tl.dayStart) / 1000) % tl.total;
+  let lo = 0, hi = tl.order.length - 1;
+  while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (tl.order[mid].at <= pos) lo = mid; else hi = mid - 1; }
+  const e = tl.order[lo], into = pos - e.at;
+  // 'start' is backdated by the block's position inside the tape, so (now - start) = where to play from.
+  return { item: list[e.i], i: e.i, slot: e.slot, from: e.from, start: t - (e.from + into) * 1000,
+           airs: t - into * 1000, end: t + (e.len - into) * 1000, tl: lo };
+}
+// The show after the one at time t.
+function nextAfter(ch, list, t) { const now = scheduleAt(ch, list, t); return scheduleAt(ch, list, now.end + 1000); }
+// When the current block's airtime is over, move on even if the tape keeps going.
+function armBlock(sch) {
+  clearTimeout(S.blockTimer); S.cur = sch;
+  const token = S.token;
+  S.blockTimer = setTimeout(() => {
+    const p = S.playing;
+    if (p && token === S.token) { staticOn(); followClock(p, 0).then(() => showBanner()); }
+  }, Math.max(5000, sch.end - Date.now() + 500));
 }
 
 /* ---------- item metadata: find the playable video files ---------- */
@@ -264,6 +311,7 @@ async function tune(idx, opts = {}) {
     if (token !== S.token) return;
     const now = Date.now();
     const sch = scheduleAt(ch, list, now);
+    armBlock(sch);
     await play(ch, list, sch.i, now - sch.start, token, 0, sch.slot);
   } catch (e) {
     if (token === S.token) offAir(ch);
@@ -284,9 +332,10 @@ async function play(ch, list, i, offsetMs, token, tries, slot, k = 0) {
   const f = files[(slot != null ? slot : i) % files.length];
   let off = offsetMs / 1000;
   if (f.len > 0) off = off % f.len;
-  if (f.len > 0 && f.len - off < 20) off = 0;           // don't drop in on the end credits
+  if (f.len > 0 && f.len - off < 20) off = Math.max(0, f.len - 20);
   const title = files.length > 1 && f.title ? item.title + ' — ' + f.title : item.title;
-  const next = list[(i + 1) % list.length];
+  const nx = nextAfter(ch, list, Date.now() + 2000), next = nx.item;
+  const nxAt = nx.airs || nx.start;
   k = Math.min(k, f.cands.length - 1);
   S.playing = { ch, list, i, f, k, title, token, tries, slot, offsetMs, startOff: off };
 
@@ -300,7 +349,7 @@ async function play(ch, list, i, offsetMs, token, tries, slot, k = 0) {
   clearTimeout(S.stallTimer);
   S.stallTimer = setTimeout(() => { if (token === S.token && vid.readyState < 3) downgrade(); }, STALL_MS);
   vid.play().catch(() => {});
-  banner(ch, title, 'Up next: ' + next.title, f.len ? off / f.len : 0);
+  banner(ch, title, 'Up next at ' + clock(new Date(nxAt)) + ': ' + next.title, f.len ? off / f.len : 0);
 }
 
 // Best copy won't play or keeps stalling: try the next-best copy of the same video, then move on.
@@ -315,7 +364,10 @@ function downgrade() {
 function skip() {
   const p = S.playing; if (!p) return;
   staticOn();
-  play(p.ch, p.list, p.i + 1, 0, p.token, p.tries + 1, null);
+  const n = nextAfter(p.ch, p.list, Date.now());
+  armBlock(n);
+  if (n.i === p.i) return play(p.ch, p.list, p.i + 1, 0, p.token, p.tries + 1, null);
+  play(p.ch, p.list, n.i, n.from * 1000, p.token, p.tries + 1, n.slot);
 }
 
 vid.addEventListener('loadeddata', () => { if (!vid.paused || vid.readyState >= 2) staticOff(); });
@@ -329,7 +381,16 @@ function prefetch() {
   });
 }
 vid.addEventListener('waiting', () => { clearTimeout(S.stallTimer); S.stallTimer = setTimeout(() => { if (vid.readyState < 3 && !S.paused) downgrade(); }, STALL_MS); });
-vid.addEventListener('ended', () => { const p = S.playing; if (!p) return; staticOn(); play(p.ch, p.list, p.i + 1, 0, p.token, 0, null).then(() => showBanner()); });
+vid.addEventListener('ended', () => { const p = S.playing; if (!p) return; staticOn(); followClock(p, 0).then(() => showBanner()); });
+// Go to whatever the channel's clock says is on now. If the clock still says the tape that
+// just ended (its real length was shorter than listed), go to the next show from its top.
+function followClock(p, tries) {
+  const now = Date.now();
+  let sch = scheduleAt(p.ch, p.list, now);
+  if (S.cur && sch.tl === S.cur.tl) { sch = nextAfter(p.ch, p.list, now); armBlock(sch); return play(p.ch, p.list, sch.i, sch.from * 1000, p.token, tries, sch.slot); }
+  armBlock(sch);
+  return play(p.ch, p.list, sch.i, now - sch.start, p.token, tries, sch.slot);
+}
 vid.addEventListener('error', () => { if (vid.getAttribute('src')) downgrade(); });
 
 function offAir(ch) {
@@ -426,8 +487,8 @@ function buildGuide() {
   const now = Date.now(), slot = Math.floor(now / SLOT_MS) * SLOT_MS;
   G.list = G.dec === DEC ? CHANNELS : lineup(G.dec);
   drawTabs();
-  $('gNowHead').textContent = 'NOW · ' + slotLabel(slot);
-  $('gNextHead').textContent = slotLabel(slot + SLOT_MS);
+  $('gNowHead').textContent = 'ON NOW';
+  $('gNextHead').textContent = 'UP NEXT';
   $('gRows').innerHTML = G.list.map((ch, k) =>
     `<div class="gr" style="--ch:${ch.color}"><div class="gc"><b>${ch.num}</b>${ch.call}</div>` +
     `<div class="gt now" id="gn${k}">…</div><div class="gt" id="gx${k}">…</div></div>`).join('');
@@ -435,8 +496,9 @@ function buildGuide() {
   G.list.forEach((ch, k) => {
     loadList(ch).then(list => {
       if (G.dec !== dec) return;
-      const a = scheduleAt(ch, list, now), b = scheduleAt(ch, list, now + SLOT_MS);
-      $('gn' + k).textContent = a.item.title; $('gx' + k).textContent = b.item.title;
+      const a = scheduleAt(ch, list, now), b = nextAfter(ch, list, now);
+      $('gn' + k).textContent = a.item.title;
+      $('gx' + k).innerHTML = '<span class="tag">' + clock(new Date(b.airs)) + '</span>' + b.item.title.replace(/</g, '&lt;');
     }).catch(() => { if (G.dec === dec) { $('gn' + k).textContent = 'Off the air'; $('gx' + k).textContent = ''; } });
   });
   $('gRows').classList.remove('swap'); void $('gRows').offsetWidth; $('gRows').classList.add('swap');
