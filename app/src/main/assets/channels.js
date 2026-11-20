@@ -37,7 +37,9 @@ const THEMES = {
   horror:      { call: 'FRITE', name: 'Creature Feature',    color: '#76ff03', q: '(collection:SciFi_Horror OR subject:horror)' },
   latenight:   { call: 'LATE',  name: 'Late Night',          color: '#7c4dff', q: 'subject:"late night"' },
   skin:        { call: 'SKIN',  name: 'Late-Night Thrillers', color: '#c51162', q: '(subject:"erotic thriller" OR subject:softcore)', adult: true },
-  xxx:         { call: 'XXX',   name: 'After Dark',          color: '#d50000', q: '(collection:adultvhs OR subject:porn OR subject:"adult film" OR subject:xxx)', adult: true },
+  // Actual adult films only: adult VHS/film collections and porn-tagged movies, minus streams, podcasts, news,
+  // comedy, softcore, cartoons and other 18+ stuff that isn't porn.
+  xxx:         { call: 'XXX',   name: 'After Dark',          color: '#d50000', q: '(collection:adultvhs OR collection:adultfilm OR (subject:porn OR subject:pornography OR subject:"adult film" OR subject:"adult movie" OR subject:xxx OR subject:"x-rated" OR subject:porno OR subject:"vintage porn" OR subject:"classic porn")) AND NOT (collection:twitchstreams OR collection:social-media-video OR collection:podcasts-video OR collection:podcasts_mirror OR collection:funnyordie OR collection:mirrortube OR collection:altcensored OR collection:fringe OR collection:television OR collection:loggedin OR collection:mensmagazines_post70s OR subject:podcast OR subject:twitch OR subject:documentary OR subject:interview OR subject:news OR subject:trailer OR subject:comedy OR subject:parody OR subject:music OR subject:anime OR subject:hentai OR subject:cartoon OR subject:animation OR subject:softcore OR subject:"erotic thriller")', adult: true },
 };
 
 const DECADES = [
@@ -65,8 +67,7 @@ const LINEUPS = {
     "comedyfilm",
     "noir",
     "western",
-    "horror",
-    "xxx"
+    "horror"
   ],
   "60s": [
     "cartoons",
