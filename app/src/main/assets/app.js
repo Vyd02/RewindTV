@@ -63,6 +63,11 @@ function fit() {
 addEventListener('resize', fit); fit(); setTimeout(fit, 300); setTimeout(fit, 1500);
 
 /* ---------- networking: native bridge on the Fire TV, fetch in a browser ---------- */
+/* ---------- decade tabs ---------- */
+let DEC = (store0('rt:dec') && LINEUPS[store0('rt:dec')]) ? store0('rt:dec') : DEFAULT_DECADE;
+let CHANNELS = lineup(DEC);
+function store0(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
+
 const pending = {}; let reqId = 0;
 function get(url) {
   if (window.Android && Android.get) {
@@ -91,11 +96,11 @@ const store = {
 
 /* ---------- channel lists ---------- */
 function loadList(ch) {
-  if (S.lists[ch.num]) return S.lists[ch.num];
-  const key = 'rt:list:' + ch.num + ':' + hash(ch.q + SAFE);
+  if (S.lists[ch.key]) return S.lists[ch.key];
+  const key = 'rt:list:' + ch.key + ':' + hash(ch.q + SAFE);
   const cached = store.get(key);
   if (cached && Date.now() - cached.at < LIST_TTL && cached.docs.length) {
-    return (S.lists[ch.num] = Promise.resolve(arrange(ch, cached.docs)));
+    return (S.lists[ch.key] = Promise.resolve(arrange(ch, cached.docs)));
   }
   const url = 'https://archive.org/advancedsearch.php?' + new URLSearchParams([
     ['q', '(' + ch.q + ')' + SAFE], ['fl[]', 'identifier'], ['fl[]', 'title'],
@@ -107,15 +112,15 @@ function loadList(ch) {
     docs.sort((a, b) => a.id < b.id ? -1 : 1);         // same order on every box
     store.set(key, { at: Date.now(), docs });
     return arrange(ch, docs);
-  }).catch(e => { delete S.lists[ch.num]; if (cached) return arrange(ch, cached.docs); throw e; });
-  return (S.lists[ch.num] = p);
+  }).catch(e => { delete S.lists[ch.key]; if (cached) return arrange(ch, cached.docs); throw e; });
+  return (S.lists[ch.key] = p);
 }
 // A fresh shuffle each week, the same for everybody watching.
-function arrange(ch, docs) { const week = Math.floor(Date.now() / (7 * 864e5)); return shuffle(docs, hash(ch.num + ':' + week)); }
+function arrange(ch, docs) { const week = Math.floor(Date.now() / (7 * 864e5)); return shuffle(docs, hash(ch.key + ':' + week)); }
 
 function scheduleAt(ch, list, t) {
   const slot = Math.floor(t / SLOT_MS);
-  const i = (slot + hash(ch.call)) % list.length;
+  const i = (slot + hash(ch.key)) % list.length;
   return { item: list[i], i, slot, start: slot * SLOT_MS };
 }
 
@@ -131,7 +136,8 @@ function videos(id) {
     const fmt = f => (f.format || '').toLowerCase();
     const rank = f => height(f) * 10
       + (/h\.264|mpeg4/.test(fmt(f)) ? 3 : /matroska|h\.265|hevc/.test(fmt(f)) ? 2 : 0)   // easiest to decode wins ties
-      + Math.min(1, (parseInt(f.size, 10) || 0) / 5e9);
+      + (/\.ia\.mp4$/i.test(f.name) ? 1 : 0)                                         // same quality: the archive's streaming-ready copy starts faster
+      + Math.min(0.5, (parseInt(f.size, 10) || 0) / 1e10);
     const groups = {};
     for (const f of files) {
       const base = f.name.replace(/(_512kb)?(\.ia)?\.[a-z0-9]+$/i, '');
@@ -217,11 +223,11 @@ function blockedKey(key) {
 async function tune(idx, opts = {}) {
   const n = CHANNELS.length;
   idx = ((idx % n) + n) % n;
-  if (idx !== S.idx) S.last = S.idx;
+  if (idx !== S.idx && S.idx >= 0) S.last = S.idx;
   S.idx = idx;
   const ch = CHANNELS[idx];
   const token = ++S.token;
-  store.set('rt:ch', ch.num);
+  store.set('rt:ch', { dec: ch.dec, num: ch.num }); store.set('rt:dec', ch.dec);
   S.paused = false; vcr('');
   staticOn();
   osd(ch);
@@ -366,7 +372,7 @@ function osd(ch) {
 function vcr(text, blink) { const v = $('vcr'); v.textContent = text; v.classList.toggle('hidden', !text); v.classList.toggle('blink', !!blink); }
 function banner(ch, title, next, frac) {
   tv.style.setProperty('--ch', ch.color);
-  $('bnNum').textContent = ch.num; $('bnCall').textContent = ch.call; $('bnChan').textContent = ch.name;
+  $('bnNum').textContent = ch.num; $('bnCall').textContent = ch.call; $('bnChan').textContent = ch.dec + ' · ' + ch.name;
   $('bnTitle').textContent = title; $('bnNext').textContent = next || '';
   $('bnFill').style.width = (Math.max(0, Math.min(1, frac)) * 100) + '%';
   showBanner();
@@ -384,34 +390,57 @@ setInterval(() => {
 
 /* ---------- guide ---------- */
 const ROW_H = 96;
+const G = { dec: DEC, list: CHANNELS };
+function drawTabs() {
+  $('gTabs').innerHTML = DECADES.map(d =>
+    `<div class="tab${d.id === G.dec ? ' on' : ''}${d.id === DEC ? ' live' : ''}">${d.id}</div>`).join('') + '<div id="gTabSel"></div>';
+  const k = DECADES.findIndex(d => d.id === G.dec), el = $('gTabs').children[k];
+  requestAnimationFrame(() => { const sel = $('gTabSel'); if (el && sel) { sel.style.transform = `translateX(${el.offsetLeft}px)`; sel.style.width = el.offsetWidth + 'px'; } });
+}
 function buildGuide() {
   const now = Date.now(), slot = Math.floor(now / SLOT_MS) * SLOT_MS;
+  G.list = G.dec === DEC ? CHANNELS : lineup(G.dec);
+  drawTabs();
   $('gNowHead').textContent = 'NOW · ' + slotLabel(slot);
   $('gNextHead').textContent = slotLabel(slot + SLOT_MS);
-  $('gRows').innerHTML = CHANNELS.map((ch, k) =>
+  $('gRows').innerHTML = G.list.map((ch, k) =>
     `<div class="gr" style="--ch:${ch.color}"><div class="gc"><b>${ch.num}</b>${ch.call}</div>` +
     `<div class="gt now" id="gn${k}">…</div><div class="gt" id="gx${k}">…</div></div>`).join('');
-  CHANNELS.forEach((ch, k) => {
+  const dec = G.dec;
+  G.list.forEach((ch, k) => {
     loadList(ch).then(list => {
+      if (G.dec !== dec) return;
       const a = scheduleAt(ch, list, now), b = scheduleAt(ch, list, now + SLOT_MS);
       $('gn' + k).textContent = a.item.title; $('gx' + k).textContent = b.item.title;
-    }).catch(() => { $('gn' + k).textContent = 'Off the air'; $('gx' + k).textContent = ''; });
+    }).catch(() => { if (G.dec === dec) { $('gn' + k).textContent = 'Off the air'; $('gx' + k).textContent = ''; } });
   });
+  $('gRows').classList.remove('swap'); void $('gRows').offsetWidth; $('gRows').classList.add('swap');
 }
 function moveGuide(k) {
-  const n = CHANNELS.length; S.gSel = ((k % n) + n) % n;
+  const n = G.list.length; S.gSel = ((k % n) + n) % n;
   const visible = Math.floor(($('gList').clientHeight || 420) / ROW_H);
   const top = Math.max(0, Math.min(S.gSel - Math.floor(visible / 2), n - visible));
   $('gRows').style.transform = `translateY(${-top * ROW_H}px)`;
   $('gSel').style.transform = `translateY(${(S.gSel - top) * ROW_H}px)`;
 }
+function switchTab(dir) {
+  const k = DECADES.findIndex(d => d.id === G.dec);
+  const next = DECADES[(k + dir + DECADES.length) % DECADES.length].id;
+  const sel = S.gSel;
+  G.dec = next; buildGuide(); moveGuide(Math.min(sel, G.list.length - 1));
+}
 function openGuide() {
   if (NATIVE) Android.vRect(1054 / 1920, 60 / 1080, 0.42, 0.42);
-  S.guide = true; buildGuide(); document.body.classList.add('guide');
+  S.guide = true; G.dec = DEC; buildGuide(); document.body.classList.add('guide');
   $('guide').classList.remove('hidden'); $('banner').classList.add('hidden');
   moveGuide(S.idx);
 }
 function closeGuide() { if (NATIVE && S.guide) Android.vRect(0, 0, 1, 1); S.guide = false; document.body.classList.remove('guide'); $('guide').classList.add('hidden'); }
+function tuneFromGuide(k) {
+  closeGuide();
+  if (G.dec !== DEC) { DEC = G.dec; CHANNELS = G.list; store.set('rt:dec', DEC); S.last = k; S.idx = -1; return tune(k); }
+  if (k !== S.idx) tune(k); else showBanner();
+}
 
 /* ---------- remote ---------- */
 function remote(key) {
@@ -424,9 +453,11 @@ function remote(key) {
       case 'Down': return moveGuide(S.gSel + 1);
       case 'ChannelUp': return moveGuide(S.gSel - 5);
       case 'ChannelDown': return moveGuide(S.gSel + 5);
-      case 'OK': case 'Right': { const k = S.gSel; closeGuide(); if (k !== S.idx) tune(k); else showBanner(); return; }
+      case 'OK': return tuneFromGuide(S.gSel);
+      case 'Left': return switchTab(-1);
+      case 'Right': return switchTab(1);
       case 'PlayPause': return openBlocked();
-      case 'Back': case 'Guide': case 'Left': return closeGuide();
+      case 'Back': case 'Guide': return closeGuide();
     }
     return;
   }
@@ -480,7 +511,7 @@ window.RT = { remote, _got, _v, sleep, wake, toast: t => toast(t, 5000) };
 if (window.Android && Android.alive) Android.alive();
 
 const saved = store.get('rt:ch');
-const start = Math.max(0, CHANNELS.findIndex(c => c.num === saved));
+const start = Math.max(0, CHANNELS.findIndex(c => saved && c.num === saved.num && c.dec === saved.dec));
 S.idx = start; S.last = start;
 screen.classList.add('on');
 setTimeout(() => screen.classList.remove('on'), 1100);

@@ -77,7 +77,7 @@ body.guide #screen { z-index: 3; }
 #gLogo b { font-weight: normal; margin-left: 18px; padding: 0 18px; border-radius: 14px; background: #ffe066; color: #1b0e5c; display: inline-block; animation: wobble 3s ease-in-out infinite; }
 @keyframes wobble { 0%,100% { transform: rotate(-4deg); } 50% { transform: rotate(4deg) scale(1.06); } }
 #gHint { font-size: 36px; color: #c9bfff; margin-top: 10px; }
-#gClock { font-size: 80px; color: #ffe066; margin-top: 10px; text-shadow: 4px 4px 0 #0007; }
+#gClock { font-size: 64px; color: #ffe066; margin-top: 4px; text-shadow: 4px 4px 0 #0007; }
 #gHead { position: absolute; left: 70px; right: 70px; top: 540px; height: 60px; display: flex; font-size: 40px; color: #ffe066; gap: 14px; }
 #gHead .gc { width: 230px; padding-left: 20px; }
 #gHead .gt { flex: 1; padding-left: 20px; }
@@ -136,3 +136,15 @@ body.native.guide #screen { box-shadow: none; }
 .br.sel { background: #ffe066; color: #1b0e5c; transform: scale(1.02); box-shadow: 0 0 30px #ffe06688; }
 .br.gone { transform: translateX(120%); opacity: 0; }
 .br.empty { background: none; color: #ffffffaa; white-space: normal; line-height: 1.3; height: auto; }
+
+/* ---------- decade tabs ---------- */
+#gTabs { position: absolute; left: 70px; top: 440px; display: flex; gap: 10px; padding: 8px; background: #0000004d; border-radius: 22px; }
+#gTabs .tab { position: relative; z-index: 1; font-size: 50px; padding: 0 26px; line-height: 70px; color: #c9bfff; border-radius: 16px; transition: color .25s, transform .25s; }
+#gTabs .tab.on { color: #1b0e5c; transform: scale(1.08); }
+#gTabs .tab.live::after { content: ''; position: absolute; right: 8px; top: 10px; width: 12px; height: 12px; border-radius: 50%; background: #ff3d3d; box-shadow: 0 0 10px #ff3d3d; animation: blink 1.2s steps(2) infinite; }
+#gTabSel { position: absolute; left: 0; top: 8px; height: 70px; background: #ffe066; border-radius: 16px; box-shadow: 0 0 24px #ffe06699;
+  transition: transform .35s cubic-bezier(.2,1.3,.3,1), width .35s; }
+#gRows.swap { animation: swapIn .35s ease-out; }
+@keyframes swapIn { from { opacity: 0; filter: blur(4px); } to { opacity: 1; filter: none; } }
+
+body.guide #tune { display: none; }

@@ -1,43 +1,219 @@
-// Rewind TV channel lineup.
-// Each channel is an Internet Archive search. To add a channel, copy a line,
-// give it a new number, and change the query. Test a query at archive.org/advancedsearch.php
-//
-// SAFE is added to every query. It only limits results to videos (no content filter).
+// Rewind TV lineup: one tab per decade, each with its own channels starting at 1.
+// A channel is a theme (an Internet Archive search) limited to that decade.
+// The LINEUPS lists only include themes the archive has enough videos for in that decade.
+
+// Every query gets SAFE added: videos only, and skip uploaders known to stamp a logo on the picture.
 const SAFE = ' AND mediatype:movies' +
-  // Skip uploaders known to stamp their own logo/Patreon on the video.
   ' AND NOT (coffee4binky OR "Tyrone L. Warbasse" OR "Las Vegas Time Machine" OR Lazerverse OR "Going Buoy" OR "Spaced Out Truckers" OR "Phony Phootbawl" OR description:patreon OR title:patreon)';
+// Adult channels also get this: drops anything titled or tagged in a way that suggests minors.
 const NO_MINORS = ' AND NOT (title:teen OR subject:teen OR title:teens OR title:young OR subject:young OR title:girl OR title:girls OR title:schoolgirl OR title:school OR title:lolita OR subject:lolita OR title:minor OR title:underage OR title:child OR title:kid OR title:barely OR title:petite OR subject:hentai)';
 
-const CHANNELS = [
-  { num: 1,  call: 'TOON',  name: 'Cartoon Classics',     color: '#ff3d7f', q: 'collection:classic_cartoons' },
-  { num: 2,  call: 'SPNCH', name: 'Popeye Hour',          color: '#36c26b', q: 'title:popeye' },
-  { num: 3,  call: 'SAT',   name: 'Saturday Morning',     color: '#ffb300', q: 'subject:"saturday morning"' },
-  { num: 4,  call: 'VHS',   name: 'Taped Off TV',         color: '#00b8d4', q: 'collection:vhsvault AND subject:cartoons' },
-  { num: 5,  call: 'HERO',  name: 'Superman Toons',       color: '#2979ff', q: 'title:superman AND subject:fleischer' },
-  { num: 6,  call: 'ADS',   name: '90s Commercials',      color: '#ff6d00', q: 'subject:"90s commercials"' },
-  { num: 7,  call: 'BREAK', name: 'Commercial Breaks',    color: '#d500f9', q: 'collection:classic_tv_commercials AND (subject:1990s OR subject:1990 OR title:199*)' },
-  { num: 8,  call: 'KIDBK', name: 'Kids Network Breaks',  color: '#ff9100', q: 'collection:classic_tv_commercials AND subject:nickelodeon' },
-  { num: 9, call: 'TOYS',  name: 'Toy Commercials',      color: '#f50057', q: 'subject:"toy commercials"' },
-  { num: 10, call: 'PRESS', name: 'Game Commercials',     color: '#76ff03', q: 'subject:"video game commercials"' },
-  { num: 11, call: 'RERUN', name: 'Classic TV',           color: '#ffd600', q: 'collection:classic_tv' },
-  { num: 12, call: 'GOLD',  name: '50s Gold',             color: '#c6a700', q: 'collection:classic_tv_1950s' },
-  { num: 13, call: 'LAFF',  name: 'Sitcom City',          color: '#ff4081', q: 'subject:sitcom AND collection:classic_tv' },
-  { num: 14, call: 'BUZZR', name: 'Game Shows',           color: '#e040fb', q: 'subject:"game show" AND collection:classic_tv' },
-  { num: 15, call: 'BYTE',  name: 'Computer Chronicles',  color: '#00e676', q: 'collection:computerchronicles' },
-  { num: 16, call: 'WX',    name: 'Weather Watch',        color: '#40c4ff', q: 'subject:"weather channel"' },
-  { num: 17, call: 'BUY',   name: 'Late Night Infomercials', color: '#ffab40', q: 'subject:infomercial' },
-  { num: 18, call: 'PSA',   name: 'The More You Know',    color: '#69f0ae', q: 'subject:"public service announcement"' },
-  { num: 19, call: 'CLASS', name: 'School Films',         color: '#b2ff59', q: 'collection:prelinger' },
-  { num: 20, call: 'FLIX',  name: 'Comedy Movies',        color: '#ffea00', q: 'collection:Comedy_Films' },
-  { num: 21, call: 'NOIR',  name: 'Film Noir',            color: '#9e9e9e', q: 'collection:Film_Noir' },
-  { num: 22, call: 'OATER', name: 'Western Theater',      color: '#a1887f', q: 'collection:feature_films AND subject:western' },
-  { num: 23, call: 'FRITE', name: 'Creature Feature',     color: '#76ff03', q: 'collection:SciFi_Horror' },
-  { num: 24, call: 'JAMZ',  name: 'Music Videos',         color: '#ff1744', q: 'subject:"music video" AND year:[1980 TO 1999]' },
-  { num: 25, call: 'SLAM',  name: '90s Wrestling',        color: '#ffc400', q: 'subject:wrestling AND (subject:1990s OR year:[1985 TO 1999])' },
-  { num: 26, call: 'OTAKU', name: 'Anime Block',          color: '#ff80ab', q: 'subject:anime AND (subject:1990s OR year:[1985 TO 1999])' },
-  { num: 27, call: 'NEWS',  name: 'Taped News',           color: '#448aff', q: 'subject:news AND collection:vhsvault' },
-  { num: 28, call: 'LATE',  name: 'Late Night',           color: '#7c4dff', q: 'subject:"late night"' },
-  // Adults only. NO_MINORS keeps out anything titled or tagged in a way that suggests minors.
-  { num: 29, call: 'SKIN',  name: 'Late-Night Thrillers', color: '#c51162', q: '(subject:"erotic thriller" OR subject:softcore)' + NO_MINORS },
-  { num: 30, call: 'XXX',   name: 'After Dark',           color: '#d50000', q: '(collection:adultvhs OR ((subject:porn OR subject:"adult film" OR subject:xxx) AND year:[1970 TO 1999]))' + NO_MINORS },
+const THEMES = {
+  cartoons:    { call: 'TOON',  name: 'Cartoons',            color: '#ff3d7f', q: '(subject:cartoon OR subject:cartoons OR subject:animation OR collection:classic_cartoons)' },
+  satam:       { call: 'SAT',   name: 'Saturday Morning',    color: '#ffb300', q: 'subject:"saturday morning"' },
+  kidbreaks:   { call: 'KIDBK', name: 'Kids Network Breaks', color: '#ff9100', q: 'collection:classic_tv_commercials AND (subject:nickelodeon OR subject:"cartoon network" OR subject:"fox kids" OR subject:"kids wb" OR subject:disney)' },
+  toyads:      { call: 'TOYS',  name: 'Toy Commercials',     color: '#f50057', q: '(subject:"toy commercials" OR (subject:toys AND subject:commercials))' },
+  gameads:     { call: 'PRESS', name: 'Game Commercials',    color: '#76ff03', q: '(subject:"video game commercials" OR (subject:"video games" AND subject:commercials))' },
+  ads:         { call: 'ADS',   name: 'Commercials',         color: '#ff6d00', q: '(collection:classic_tv_commercials OR subject:commercials OR subject:commercial)' },
+  tv:          { call: 'RERUN', name: 'Classic TV',          color: '#ffd600', q: 'collection:classic_tv' },
+  sitcom:      { call: 'LAFF',  name: 'Sitcoms',             color: '#ff4081', q: 'subject:sitcom' },
+  gameshow:    { call: 'BUZZR', name: 'Game Shows',          color: '#e040fb', q: 'subject:"game show"' },
+  music:       { call: 'JAMZ',  name: 'Music Videos',        color: '#ff1744', q: '(subject:"music video" OR subject:"music videos")' },
+  vhs:         { call: 'VHS',   name: 'Taped Off TV',        color: '#00b8d4', q: 'collection:vhsvault' },
+  news:        { call: 'NEWS',  name: 'Taped News',          color: '#448aff', q: '(subject:news AND collection:vhsvault)' },
+  sports:      { call: 'SPRT',  name: 'Sports',              color: '#00e5ff', q: '(subject:sports OR subject:football OR subject:baseball OR subject:basketball) AND collection:vhsvault' },
+  wrestling:   { call: 'SLAM',  name: 'Wrestling',           color: '#ffc400', q: 'subject:wrestling' },
+  anime:       { call: 'OTAKU', name: 'Anime Block',         color: '#ff80ab', q: 'subject:anime' },
+  computers:   { call: 'BYTE',  name: 'Computer TV',         color: '#00e676', q: '(collection:computerchronicles OR subject:computers)' },
+  weather:     { call: 'WX',    name: 'Weather Watch',       color: '#40c4ff', q: 'subject:"weather channel"' },
+  infomercial: { call: 'BUY',   name: 'Infomercials',        color: '#ffab40', q: 'subject:infomercial' },
+  psa:         { call: 'PSA',   name: 'The More You Know',   color: '#69f0ae', q: 'subject:"public service announcement"' },
+  school:      { call: 'CLASS', name: 'School Films',        color: '#b2ff59', q: '(collection:prelinger OR subject:"educational film")' },
+  trailers:    { call: 'PREV',  name: 'Coming Attractions',  color: '#ea80fc', q: '(subject:trailer OR subject:trailers)' },
+  movies:      { call: 'FLIX',  name: 'Movies',              color: '#ffea00', q: 'collection:feature_films' },
+  comedyfilm:  { call: 'LOL',   name: 'Comedy Movies',       color: '#fff176', q: 'collection:Comedy_Films' },
+  noir:        { call: 'NOIR',  name: 'Film Noir',           color: '#9e9e9e', q: 'collection:Film_Noir' },
+  western:     { call: 'OATER', name: 'Westerns',            color: '#a1887f', q: 'subject:western' },
+  horror:      { call: 'FRITE', name: 'Creature Feature',    color: '#76ff03', q: '(collection:SciFi_Horror OR subject:horror)' },
+  latenight:   { call: 'LATE',  name: 'Late Night',          color: '#7c4dff', q: 'subject:"late night"' },
+  skin:        { call: 'SKIN',  name: 'Late-Night Thrillers', color: '#c51162', q: '(subject:"erotic thriller" OR subject:softcore)', adult: true },
+  xxx:         { call: 'XXX',   name: 'After Dark',          color: '#d50000', q: '(collection:adultvhs OR subject:porn OR subject:"adult film" OR subject:xxx)', adult: true },
+};
+
+const DECADES = [
+  { id: '50s', y: 1950 }, { id: '60s', y: 1960 }, { id: '70s', y: 1970 },
+  { id: '80s', y: 1980 }, { id: '90s', y: 1990 }, { id: '00s', y: 2000 },
 ];
+const DEFAULT_DECADE = '90s';
+
+const LINEUPS = {
+  "50s": [
+    "cartoons",
+    "ads",
+    "tv",
+    "sitcom",
+    "gameshow",
+    "music",
+    "vhs",
+    "news",
+    "wrestling",
+    "anime",
+    "psa",
+    "school",
+    "trailers",
+    "movies",
+    "comedyfilm",
+    "noir",
+    "western",
+    "horror",
+    "xxx"
+  ],
+  "60s": [
+    "cartoons",
+    "satam",
+    "ads",
+    "tv",
+    "sitcom",
+    "gameshow",
+    "music",
+    "vhs",
+    "news",
+    "wrestling",
+    "anime",
+    "computers",
+    "psa",
+    "school",
+    "trailers",
+    "movies",
+    "comedyfilm",
+    "noir",
+    "western",
+    "horror",
+    "latenight",
+    "xxx"
+  ],
+  "70s": [
+    "cartoons",
+    "satam",
+    "ads",
+    "tv",
+    "sitcom",
+    "gameshow",
+    "music",
+    "vhs",
+    "news",
+    "wrestling",
+    "anime",
+    "psa",
+    "school",
+    "trailers",
+    "movies",
+    "comedyfilm",
+    "noir",
+    "western",
+    "horror",
+    "latenight",
+    "skin",
+    "xxx"
+  ],
+  "80s": [
+    "cartoons",
+    "satam",
+    "toyads",
+    "ads",
+    "tv",
+    "sitcom",
+    "gameshow",
+    "music",
+    "vhs",
+    "news",
+    "sports",
+    "wrestling",
+    "anime",
+    "computers",
+    "infomercial",
+    "psa",
+    "school",
+    "trailers",
+    "movies",
+    "comedyfilm",
+    "western",
+    "horror",
+    "latenight",
+    "skin",
+    "xxx"
+  ],
+  "90s": [
+    "cartoons",
+    "satam",
+    "kidbreaks",
+    "toyads",
+    "gameads",
+    "ads",
+    "tv",
+    "sitcom",
+    "gameshow",
+    "music",
+    "vhs",
+    "news",
+    "sports",
+    "wrestling",
+    "anime",
+    "computers",
+    "weather",
+    "infomercial",
+    "psa",
+    "school",
+    "trailers",
+    "movies",
+    "western",
+    "horror",
+    "latenight",
+    "skin",
+    "xxx"
+  ],
+  "00s": [
+    "cartoons",
+    "satam",
+    "kidbreaks",
+    "toyads",
+    "gameads",
+    "ads",
+    "tv",
+    "sitcom",
+    "gameshow",
+    "music",
+    "vhs",
+    "news",
+    "sports",
+    "wrestling",
+    "anime",
+    "computers",
+    "weather",
+    "infomercial",
+    "psa",
+    "trailers",
+    "movies",
+    "comedyfilm",
+    "western",
+    "horror",
+    "latenight",
+    "skin",
+    "xxx"
+  ]
+};
+
+function decadeClause(y) {
+  // Exact year words (1990 OR 1991 ...) instead of a wildcard: same results, about 10x faster.
+  const years = Array.from({ length: 10 }, (_, i) => y + i).join(' OR ');
+  return ` AND (year:[${y} TO ${y + 9}] OR subject:${y}s OR subject:"${String(y).slice(2)}s" OR title:(${years}))`;
+}
+
+function lineup(decId) {
+  const d = DECADES.find(x => x.id === decId) || DECADES.find(x => x.id === DEFAULT_DECADE);
+  return LINEUPS[d.id].map((key, i) => {
+    const t = THEMES[key];
+    return { num: i + 1, key: d.id + ':' + key, dec: d.id, call: t.call, name: t.name, color: t.color,
+             q: '(' + t.q + ')' + decadeClause(d.y) + (t.adult ? NO_MINORS : '') };
+  });
+}
