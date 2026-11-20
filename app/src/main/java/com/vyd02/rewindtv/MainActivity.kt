@@ -22,6 +22,10 @@ import java.util.concurrent.Executors
 class MainActivity : Activity() {
 
     private lateinit var web: WebView
+    private lateinit var video: NativeVideo
+    @Volatile private var pageAlive = false
+    private val errors = StringBuilder()
+    private lateinit var errorView: android.widget.TextView
     private val pool = Executors.newFixedThreadPool(6)
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -37,7 +41,10 @@ class MainActivity : Activity() {
             .build()
 
         web = WebView(this)
-        web.setBackgroundColor(Color.BLACK)
+        web.setBackgroundColor(Color.TRANSPARENT)
+        video = NativeVideo(this) { type, pos, dur ->
+            web.post { web.evaluateJavascript("window.RT && RT._v('$type', $pos, $dur)", null) }
+        }
         web.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -47,7 +54,14 @@ class MainActivity : Activity() {
             textZoom = 100
             setSupportZoom(false)
         }
-        web.webChromeClient = WebChromeClient()
+        web.webChromeClient = object : WebChromeClient() {
+            override fun onConsoleMessage(m: android.webkit.ConsoleMessage): Boolean {
+                if (m.messageLevel() == android.webkit.ConsoleMessage.MessageLevel.ERROR) {
+                    synchronized(errors) { errors.append(m.message()).append(" @").append(m.sourceId().substringAfterLast('/')).append(':').append(m.lineNumber()).append('\n') }
+                }
+                return false
+            }
+        }
         web.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? =
                 loader.shouldInterceptRequest(request.url)
@@ -55,7 +69,25 @@ class MainActivity : Activity() {
         web.addJavascriptInterface(Bridge(), "Android")
         web.isFocusable = true
         web.isFocusableInTouchMode = true
-        setContentView(web)
+        errorView = android.widget.TextView(this).apply {
+            setTextColor(Color.YELLOW); textSize = 18f; setBackgroundColor(0xCC000000.toInt())
+            setPadding(40, 40, 40, 40); visibility = View.GONE
+        }
+        val root = android.widget.FrameLayout(this)
+        root.setBackgroundColor(Color.BLACK)
+        val full = android.widget.FrameLayout.LayoutParams(-1, -1)
+        root.addView(video.box, android.widget.FrameLayout.LayoutParams(-1, -1))
+        root.addView(web, full)
+        root.addView(errorView, android.widget.FrameLayout.LayoutParams(-1, -2))
+        setContentView(root)
+        // If the screen never comes alive, show what went wrong instead of a black screen.
+        web.postDelayed({
+            if (!pageAlive) {
+                errorView.text = "Rewind TV couldn't start the screen.\nTake a picture of this and send it to Claude.\n\n" +
+                    synchronized(errors) { errors.toString().ifEmpty { "(no error messages — page never loaded)" } }
+                errorView.visibility = View.VISIBLE
+            }
+        }, 12000)
         web.requestFocus()
 
         // Grab the newest screen files from GitHub (wait up to 3 seconds), then turn the TV on.
@@ -115,6 +147,7 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         pool.shutdownNow()
+        video.release()
         web.destroy()
         super.onDestroy()
     }
@@ -141,6 +174,17 @@ class MainActivity : Activity() {
                 web.post { web.evaluateJavascript(js, null) }
             }
         }
+
+        @JavascriptInterface fun alive() { pageAlive = true; runOnUiThread { errorView.visibility = View.GONE } }
+        @JavascriptInterface fun vLoad(url: String, startMs: Double) { runOnUiThread { video.load(url, startMs.toLong()) } }
+        @JavascriptInterface fun vPlay() { runOnUiThread { video.play() } }
+        @JavascriptInterface fun vPause() { runOnUiThread { video.pause() } }
+        @JavascriptInterface fun vStop() { runOnUiThread { video.stop() } }
+        @JavascriptInterface fun vSeek(ms: Double) { runOnUiThread { video.seek(ms.toLong()) } }
+        @JavascriptInterface fun vRect(x: Double, y: Double, w: Double, h: Double) {
+            runOnUiThread { video.rect(x.toFloat(), y.toFloat(), w.toFloat(), h.toFloat()) }
+        }
+        @JavascriptInterface fun errors(): String = synchronized(errors) { errors.toString() }
 
         @JavascriptInterface
         fun exit() {

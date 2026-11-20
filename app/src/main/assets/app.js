@@ -9,7 +9,44 @@ const STALL_MS = 12000;              // skip a tape that won't start
 const STATIC_MS = 900;               // static only plays for a beat, then a quiet "TUNING..." card
 const $ = id => document.getElementById(id);
 
-const vid = $('vid'), screen = $('screen'), tv = $('tv');
+const screen = $('screen'), tv = $('tv');
+const NATIVE = !!(window.Android && Android.vLoad);
+
+/* Show script errors on screen instead of failing silently. */
+window.addEventListener('error', e => { try { const t = $('toast'); t.textContent = 'Error: ' + e.message + ' (line ' + e.lineno + ')'; t.classList.remove('hidden'); } catch (x) {} });
+
+/* On the Fire TV the picture comes from the TV's own video player underneath this page.
+   This stand-in acts like a <video> element so the rest of the code doesn't care which is used. */
+function nativeVideo() {
+  const L = {};
+  const v = {
+    _src: '', _t: 0, _d: NaN, readyState: 0, paused: true, startAt: 0, onloadedmetadata: null,
+    addEventListener(t, f) { (L[t] = L[t] || []).push(f); },
+    emit(t) { (L[t] || []).forEach(f => f()); if (t === 'loadedmetadata' && v.onloadedmetadata) v.onloadedmetadata(); },
+    set src(u) { v._src = u; v.readyState = 0; v._t = v.startAt; v._d = NaN; Android.vLoad(u, Math.round(v.startAt * 1000)); },
+    get src() { return v._src; },
+    getAttribute(k) { return k === 'src' ? (v._src || null) : null; },
+    removeAttribute() { v._src = ''; v.readyState = 0; v.startAt = 0; Android.vStop(); },
+    load() {},
+    play() { v.paused = false; Android.vPlay(); return Promise.resolve(); },
+    pause() { v.paused = true; Android.vPause(); },
+    get currentTime() { return v._t; },
+    set currentTime(x) { if (Math.abs(x - v._t) < 1.5) return; v._t = x; Android.vSeek(Math.round(x * 1000)); },
+    get duration() { return v._d; },
+  };
+  return v;
+}
+const vid = NATIVE ? nativeVideo() : $('vid');
+if (NATIVE) document.body.classList.add('native');
+function _v(type, pos, dur) {
+  if (!NATIVE) return;
+  vid._t = pos / 1000; if (dur > 0) vid._d = dur / 1000;
+  if (type === 'meta') { vid.readyState = 2; vid.emit('loadedmetadata'); vid.emit('loadeddata'); }
+  else if (type === 'playing') { vid.readyState = 4; vid.emit('playing'); }
+  else if (type === 'waiting') { vid.readyState = 2; vid.emit('waiting'); }
+  else if (type === 'ended') vid.emit('ended');
+  else if (type === 'error') vid.emit('error');
+}
 const S = {
   idx: 0, last: 0, token: 0, guide: false, gSel: 0, paused: false,
   lists: {}, meta: {}, playing: null, stallTimer: 0, backAt: 0, digits: '', digitTimer: 0,
@@ -147,6 +184,7 @@ async function play(ch, list, i, offsetMs, token, tries, slot) {
   const next = list[(i + 1) % list.length];
   S.playing = { ch, list, i, f, title, token, tries, startOff: off };
 
+  vid.startAt = off;
   vid.src = f.url;
   vid.onloadedmetadata = () => {
     if (token !== S.token) return;
@@ -284,11 +322,12 @@ function moveGuide(k) {
   $('gSel').style.transform = `translateY(${(S.gSel - top) * ROW_H}px)`;
 }
 function openGuide() {
+  if (NATIVE) Android.vRect(1054 / 1920, 60 / 1080, 0.42, 0.42);
   S.guide = true; buildGuide(); document.body.classList.add('guide');
   $('guide').classList.remove('hidden'); $('banner').classList.add('hidden');
   moveGuide(S.idx);
 }
-function closeGuide() { S.guide = false; document.body.classList.remove('guide'); $('guide').classList.add('hidden'); }
+function closeGuide() { if (NATIVE && S.guide) Android.vRect(0, 0, 1, 1); S.guide = false; document.body.classList.remove('guide'); $('guide').classList.add('hidden'); }
 
 /* ---------- remote ---------- */
 function remote(key) {
@@ -349,7 +388,8 @@ addEventListener('keydown', e => {
 function sleep() { S.slept = true; vid.pause(); hiss(false); }
 function wake() { if (S.slept) { S.slept = false; tune(S.idx); } }
 
-window.RT = { remote, _got, sleep, wake, toast: t => toast(t, 5000) };
+window.RT = { remote, _got, _v, sleep, wake, toast: t => toast(t, 5000) };
+if (window.Android && Android.alive) Android.alive();
 
 const saved = store.get('rt:ch');
 const start = Math.max(0, CHANNELS.findIndex(c => c.num === saved));
