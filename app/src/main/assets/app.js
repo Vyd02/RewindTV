@@ -92,7 +92,7 @@ const store = {
 /* ---------- channel lists ---------- */
 function loadList(ch) {
   if (S.lists[ch.num]) return S.lists[ch.num];
-  const key = 'rt:list:' + ch.num + ':' + hash(ch.q);
+  const key = 'rt:list:' + ch.num + ':' + hash(ch.q + SAFE);
   const cached = store.get(key);
   if (cached && Date.now() - cached.at < LIST_TTL && cached.docs.length) {
     return (S.lists[ch.num] = Promise.resolve(arrange(ch, cached.docs)));
@@ -120,27 +120,49 @@ function scheduleAt(ch, list, t) {
 }
 
 /* ---------- item metadata: find the playable video files ---------- */
+// Every video gets a list of copies, best quality first. If the best copy won't play
+// (or can't keep up with the internet), the next copy down is tried before giving up.
+const VID_EXT = NATIVE ? /\.(mp4|m4v|mkv|webm|mpe?g|mov)$/i : /\.mp4$/i;
 function videos(id) {
   if (S.meta[id]) return S.meta[id];
   return (S.meta[id] = getJSON('https://archive.org/metadata/' + encodeURIComponent(id)).then(m => {
-    const files = (m.files || []).filter(f => /\.mp4$/i.test(f.name));
-    // One entry per video: the archive often keeps an original plus its own encodes of it.
-    const score = f => /\.ia\.mp4$/i.test(f.name) ? 3 : /_512kb\.mp4$/i.test(f.name) ? 1 : 2;
-    const byBase = {};
+    const files = (m.files || []).filter(f => VID_EXT.test(f.name));
+    const height = f => parseInt(f.height, 10) || (/_512kb\./i.test(f.name) ? 240 : 360);
+    const fmt = f => (f.format || '').toLowerCase();
+    const rank = f => height(f) * 10
+      + (/h\.264|mpeg4/.test(fmt(f)) ? 3 : /matroska|h\.265|hevc/.test(fmt(f)) ? 2 : 0)   // easiest to decode wins ties
+      + Math.min(1, (parseInt(f.size, 10) || 0) / 5e9);
+    const groups = {};
     for (const f of files) {
-      const base = f.name.replace(/(_512kb)?(\.ia)?\.mp4$/i, '');
-      if (!byBase[base] || score(f) > score(byBase[base])) byBase[base] = f;
+      const base = f.name.replace(/(_512kb)?(\.ia)?\.[a-z0-9]+$/i, '');
+      (groups[base] = groups[base] || []).push(f);
     }
-    const list = Object.values(byBase)
-      .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
-      .map(f => ({
-        url: 'https://archive.org/download/' + encodeURIComponent(id) + '/' + f.name.split('/').map(encodeURIComponent).join('/'),
-        len: parseFloat(f.length) || 0,
-        title: cleanTitle((f.title || '').length > 2 ? f.title : ''),
-      }));
+    const url = f => 'https://archive.org/download/' + encodeURIComponent(id) + '/' + f.name.split('/').map(encodeURIComponent).join('/');
+    const list = Object.keys(groups)
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+      .map(base => {
+        const g = groups[base].sort((a, b) => rank(b) - rank(a));
+        const named = g.find(f => (f.title || '').length > 2);
+        return {
+          cands: g.map(url),
+          heights: g.map(height),
+          len: Math.max(...g.map(f => parseFloat(f.length) || 0)),
+          title: cleanTitle(named ? named.title : ''),
+        };
+      });
     if (!list.length) throw new Error('no video');
     return list;
   }).catch(e => { delete S.meta[id]; throw e; }));
+}
+
+/* ---------- tapes you've blocked (hold fast-forward) ---------- */
+const blocked = new Set(store.get('rt:block') || []);
+function blockCurrent() {
+  const p = S.playing; if (!p) return;
+  const id = p.list[p.i % p.list.length].id;
+  blocked.add(id); store.set('rt:block', [...blocked]);
+  toast('🚫 Blocked. You won’t see this tape again', 2500);
+  skip();
 }
 
 /* ---------- tuning ---------- */
@@ -169,8 +191,10 @@ async function tune(idx, opts = {}) {
   }
 }
 
-async function play(ch, list, i, offsetMs, token, tries, slot) {
+async function play(ch, list, i, offsetMs, token, tries, slot, k = 0) {
   if (tries > 6) return offAir(ch);
+  let hop = 0;
+  while (blocked.has(list[i % list.length].id) && hop++ < list.length) { i++; offsetMs = 0; slot = null; }
   const item = list[i % list.length];
   let files;
   try { files = await videos(item.id); } catch (e) {
@@ -184,21 +208,31 @@ async function play(ch, list, i, offsetMs, token, tries, slot) {
   if (f.len > 0 && f.len - off < 20) off = 0;           // don't drop in on the end credits
   const title = files.length > 1 && f.title ? item.title + ' — ' + f.title : item.title;
   const next = list[(i + 1) % list.length];
-  S.playing = { ch, list, i, f, title, token, tries, startOff: off };
+  k = Math.min(k, f.cands.length - 1);
+  S.playing = { ch, list, i, f, k, title, token, tries, slot, offsetMs, startOff: off };
 
   vid.startAt = off;
-  vid.src = f.url;
+  vid.src = f.cands[k];
   vid.onloadedmetadata = () => {
     if (token !== S.token) return;
     if (!f.len && vid.duration) off = off % vid.duration;
     try { vid.currentTime = off; } catch (e) {}
   };
   clearTimeout(S.stallTimer);
-  S.stallTimer = setTimeout(() => { if (token === S.token && vid.readyState < 3) skip(); }, STALL_MS);
+  S.stallTimer = setTimeout(() => { if (token === S.token && vid.readyState < 3) downgrade(); }, STALL_MS);
   vid.play().catch(() => {});
   banner(ch, title, 'Up next: ' + next.title, f.len ? off / f.len : 0);
 }
 
+// Best copy won't play or keeps stalling: try the next-best copy of the same video, then move on.
+function downgrade() {
+  const p = S.playing; if (!p) return;
+  if (p.k + 1 < p.f.cands.length) {
+    const ms = Math.round((vid.currentTime || p.startOff) * 1000);
+    return play(p.ch, p.list, p.i, ms, p.token, p.tries, p.slot, p.k + 1);
+  }
+  skip();
+}
 function skip() {
   const p = S.playing; if (!p) return;
   staticOn();
@@ -215,9 +249,9 @@ function prefetch() {
     loadList(ch).then(list => videos(scheduleAt(ch, list, Date.now()).item.id)).catch(() => {});
   });
 }
-vid.addEventListener('waiting', () => { clearTimeout(S.stallTimer); S.stallTimer = setTimeout(() => { if (vid.readyState < 3 && !S.paused) skip(); }, STALL_MS); });
+vid.addEventListener('waiting', () => { clearTimeout(S.stallTimer); S.stallTimer = setTimeout(() => { if (vid.readyState < 3 && !S.paused) downgrade(); }, STALL_MS); });
 vid.addEventListener('ended', () => { const p = S.playing; if (!p) return; staticOn(); play(p.ch, p.list, p.i + 1, 0, p.token, 0, null).then(() => showBanner()); });
-vid.addEventListener('error', () => { if (vid.getAttribute('src')) skip(); });
+vid.addEventListener('error', () => { if (vid.getAttribute('src')) downgrade(); });
 
 function offAir(ch) {
   staticOff(); bars(true, 'OFF THE AIR');
@@ -356,6 +390,7 @@ function remote(key) {
       else { vid.pause(); S.paused = true; vcr('❚❚ PAUSE', true); }
       return;
     case 'Rewind': try { vid.currentTime = Math.max(0, vid.currentTime - 15); } catch (e) {} vcr('◀◀ REW'); setTimeout(() => vcr(S.paused ? '❚❚ PAUSE' : ''), 1000); return;
+    case 'Block': return blockCurrent();
     case 'FastForward': try { vid.currentTime += 30; } catch (e) {} vcr('▶▶ FF'); setTimeout(() => vcr(S.paused ? '❚❚ PAUSE' : ''), 1000); return;
     case 'Back':
       if (Date.now() - S.backAt < 2500) return powerOff();
@@ -380,7 +415,7 @@ function powerOff() {
 
 // Keyboard for testing in a browser.
 const KEYMAP = { ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right', Enter: 'OK', ' ': 'OK', Escape: 'Back', Backspace: 'Back',
-  PageUp: 'ChannelUp', PageDown: 'ChannelDown', g: 'Guide', p: 'PlayPause', MediaPlayPause: 'PlayPause', ',': 'Rewind', '.': 'FastForward' };
+  PageUp: 'ChannelUp', PageDown: 'ChannelDown', g: 'Guide', p: 'PlayPause', MediaPlayPause: 'PlayPause', ',': 'Rewind', '.': 'FastForward', b: 'Block' };
 addEventListener('keydown', e => {
   const k = /^\d$/.test(e.key) ? e.key : KEYMAP[e.key];
   if (k) { e.preventDefault(); remote(k); }

@@ -3,7 +3,9 @@
 // give it a new number, and change the query. Test a query at archive.org/advancedsearch.php
 //
 // SAFE is added to every query. It only limits results to videos (no content filter).
-const SAFE = ' AND mediatype:movies';
+const SAFE = ' AND mediatype:movies' +
+  // Skip uploaders known to stamp their own logo/Patreon on the video.
+  ' AND NOT (coffee4binky OR "Tyrone L. Warbasse" OR "Las Vegas Time Machine" OR Lazerverse OR "Going Buoy" OR "Spaced Out Truckers" OR "Phony Phootbawl" OR description:patreon OR title:patreon)';
 const NO_MINORS = ' AND NOT (title:teen OR subject:teen OR title:teens OR title:young OR subject:young OR title:girl OR title:girls OR title:schoolgirl OR title:school OR title:lolita OR subject:lolita OR title:minor OR title:underage OR title:child OR title:kid OR title:barely OR title:petite OR subject:hentai)';
 
 const CHANNELS = [

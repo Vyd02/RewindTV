@@ -123,13 +123,23 @@ class MainActivity : Activity() {
             else -> null
         }
         if (name != null) {
-            if (event.action == KeyEvent.ACTION_DOWN) {
-                web.evaluateJavascript("window.RT && RT.remote('$name')", null)
+            val down = event.action == KeyEvent.ACTION_DOWN
+            if (name == "FastForward") {
+                // Tap = skip ahead 30s. Hold about a second = block this tape.
+                if (down && event.repeatCount == 0) ffHeld = false
+                if (down && event.repeatCount >= 10 && !ffHeld) { ffHeld = true; send("Block") }
+                if (!down && !ffHeld) send("FastForward")
+                return true
             }
+            val repeats = name == "Up" || name == "Down"
+            if (down && (event.repeatCount == 0 || repeats)) send(name)
             return true
         }
         return super.dispatchKeyEvent(event)
     }
+
+    private var ffHeld = false
+    private fun send(name: String) = web.evaluateJavascript("window.RT && RT.remote('$name')", null)
 
     override fun onPause() {
         super.onPause()
