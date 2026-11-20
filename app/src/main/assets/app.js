@@ -315,6 +315,7 @@ async function tune(idx, opts = {}) {
   S.idx = idx;
   const ch = CHANNELS[idx];
   const token = ++S.token;
+  S.vod = null;
   store.set('rt:ch', { dec: ch.dec, num: ch.num, key: ch.key }); store.set('rt:dec', ch.dec);
   S.paused = false; vcr('');
   staticOn();
@@ -379,6 +380,7 @@ function downgrade() {
   skip();
 }
 function skip() {
+  if (S.vod) return vodNext();
   const p = S.playing; if (!p) return;
   staticOn();
   const n = nextAfter(p.ch, p.list, Date.now());
@@ -398,7 +400,7 @@ function prefetch() {
   });
 }
 vid.addEventListener('waiting', () => { clearTimeout(S.stallTimer); S.stallTimer = setTimeout(() => { if (vid.readyState < 3 && !S.paused) downgrade(); }, STALL_MS); });
-vid.addEventListener('ended', () => { const p = S.playing; if (!p) return; staticOn(); followClock(p, 0).then(() => showBanner()); });
+vid.addEventListener('ended', () => { const p = S.playing; if (!p) return; staticOn(); if (S.vod) return vodNext(); followClock(p, 0).then(() => showBanner()); });
 // Go to whatever the channel's clock says is on now. If the clock still says the tape that
 // just ended (its real length was shorter than listed), go to the next show from its top.
 function followClock(p, tries) {
@@ -468,7 +470,7 @@ function bars(on, text) { $('bars').classList.toggle('hidden', !on); if (text) $
 /* ---------- on-screen bits ---------- */
 let osdTimer = 0, bannerTimer = 0, toastTimer = 0;
 function osd(ch) {
-  $('osdNum').textContent = pad(ch.num); $('osdCall').textContent = ch.call;
+  $('osdNum').textContent = typeof ch.num === 'number' ? pad(ch.num) : ch.num; $('osdCall').textContent = ch.call;
   $('osd').classList.remove('hidden');
   clearTimeout(osdTimer); osdTimer = setTimeout(() => $('osd').classList.add('hidden'), 3500);
 }
@@ -494,14 +496,17 @@ setInterval(() => {
 /* ---------- guide ---------- */
 const ROW_H = 96;
 const G = { dec: DEC, list: CHANNELS };
+const TABS = DECADES.map(d => d.id).concat(['MOVIES', 'SHOWS']);
+const isVod = t => t === 'MOVIES' || t === 'SHOWS';
 function drawTabs() {
-  $('gTabs').innerHTML = DECADES.map(d =>
-    `<div class="tab${d.id === G.dec ? ' on' : ''}${d.id === DEC ? ' live' : ''}">${d.id}</div>`).join('') + '<div id="gTabSel"></div>';
-  const k = DECADES.findIndex(d => d.id === G.dec), el = $('gTabs').children[k];
+  $('gTabs').innerHTML = TABS.map(t =>
+    `<div class="tab${t === G.dec ? ' on' : ''}${t === DEC ? ' live' : ''}${isVod(t) ? ' vod' : ''}">${t}</div>`).join('') + '<div id="gTabSel"></div>';
+  const k = TABS.indexOf(G.dec), el = $('gTabs').children[k];
   requestAnimationFrame(() => { const sel = $('gTabSel'); if (el && sel) { sel.style.transform = `translateX(${el.offsetLeft}px)`; sel.style.width = el.offsetWidth + 'px'; } });
 }
 function buildGuide() {
-  const now = Date.now(), slot = Math.floor(now / SLOT_MS) * SLOT_MS;
+  if (isVod(G.dec)) return buildVod();
+  const now = Date.now();
   G.list = G.dec === DEC ? CHANNELS : lineup(G.dec);
   drawTabs();
   $('gNowHead').textContent = 'ON NOW';
@@ -528,19 +533,109 @@ function moveGuide(k) {
   $('gSel').style.transform = `translateY(${(S.gSel - top) * ROW_H}px)`;
 }
 function switchTab(dir) {
-  const k = DECADES.findIndex(d => d.id === G.dec);
-  const next = DECADES[(k + dir + DECADES.length) % DECADES.length].id;
-  const sel = S.gSel;
-  G.dec = next; buildGuide(); moveGuide(Math.min(sel, G.list.length - 1));
+  const k = TABS.indexOf(G.dec);
+  const next = TABS[(k + dir + TABS.length) % TABS.length];
+  const sel = S.gSel, fromVod = isVod(G.dec);
+  G.dec = next; buildGuide();
+  moveGuide(isVod(next) || fromVod ? 0 : Math.min(sel, G.list.length - 1));
+}
+
+/* ---------- On Demand: full movies and full episodes, from the start ---------- */
+const VOD = {};
+function loadVod(kind) {
+  return VOD[kind] || (VOD[kind] = getJSON(LISTS + 'ondemand/' + kind.toLowerCase() + '.json' + bust())
+    .then(d => d.items.map(x => ({ id: x.id, title: cleanTitle(x.t), dec: x.dec, g: x.g, eps: x.e })))
+    .catch(e => { delete VOD[kind]; throw e; }));
+}
+const GENRE = { movies: 'FLIX', comedyfilm: 'LOL', noir: 'NOIR', western: 'OATER', horror: 'FRITE' };
+function hm(sec) { const h = Math.floor(sec / 3600), m = Math.round(sec % 3600 / 60); return h ? `${h}h ${pad(m)}m` : `${m} min`; }
+function buildVod() {
+  const kind = G.dec;
+  drawTabs();
+  $('gNowHead').textContent = kind === 'MOVIES' ? 'FULL MOVIES · START TO FINISH' : 'FULL EPISODES';
+  $('gNextHead').textContent = kind === 'MOVIES' ? 'LENGTH' : 'EPISODES';
+  G.list = [{ loading: true }];
+  $('gRows').innerHTML = '<div class="gr"><div class="gc"><b>…</b></div><div class="gt now">Loading the library…</div><div class="gt"></div></div>';
+  loadVod(kind).then(items => {
+    if (G.dec !== kind) return;
+    G.list = items;
+    const esc = t => t.replace(/</g, '&lt;');
+    $('gRows').innerHTML = items.map(it =>
+      `<div class="gr" style="--ch:#ffe066"><div class="gc"><b>${it.dec}</b>${kind === 'MOVIES' ? (GENRE[it.g] || 'FLIX') : 'SHOW'}</div>` +
+      `<div class="gt now">${esc(it.title)}</div><div class="gt">${kind === 'MOVIES' ? hm(it.eps[0].len) : it.eps.length + ' episodes'}</div></div>`).join('');
+    // Open on the decade you're watching (90s by default) instead of the top of the 50s.
+    const start = items.findIndex(it => it.dec === DEC);
+    moveGuide(S.gSel > 0 ? Math.min(S.gSel, items.length - 1) : Math.max(0, start));
+  }).catch(() => { if (G.dec === kind) $('gRows').innerHTML = '<div class="gr"><div class="gt now">Couldn\u2019t load On Demand. Check the internet.</div></div>'; });
+  $('gRows').classList.remove('swap'); void $('gRows').offsetWidth; $('gRows').classList.add('swap');
+}
+function pickVod(k) {
+  const it = G.list[k]; if (!it || it.loading) return;
+  if (G.dec === 'MOVIES') return playVod(it, 0, 'MOVIES');
+  openPicker(it.title, it.eps.map((e, n) => `${pad(n + 1)}. ${e.t ? cleanTitle(e.t) : 'Episode ' + (n + 1)} · ${hm(e.len)}`), n => playVod(it, n, 'SHOWS'));
+}
+async function playVod(item, ep, kind) {
+  closePicker(); closeGuide();
+  S.vod = { item, ep, kind };
+  const ch = { num: '▶', call: kind === 'MOVIES' ? 'MOVIE' : 'SHOW', name: 'On Demand', color: '#ffe066', key: 'vod:' + item.id, dec: item.dec };
+  const token = ++S.token;
+  clearTimeout(S.blockTimer); S.cur = null; S.paused = false; vcr('');
+  staticOn(); osd(ch);
+  vid.pause(); vid.removeAttribute('src'); vid.load();
+  await play(ch, [item], 0, 0, token, 0, ep);
+  if (token !== S.token) return;
+  const next = kind === 'SHOWS' && ep + 1 < item.eps.length ? 'Next: episode ' + (ep + 2) + ' plays automatically' : 'On Demand · ⏪⏪ start over · CH ▲▼ back to live TV';
+  $('bnNext').textContent = next; showBanner();
+}
+function vodNext() {
+  const v = S.vod; if (!v) return;
+  if (v.kind === 'SHOWS' && v.ep + 1 < v.item.eps.length) return playVod(v.item, v.ep + 1, v.kind);
+  S.vod = null; toast('That\u2019s the end. Back to live TV', 2500); tune(S.idx);
+}
+
+/* A pop-up list to pick from (episodes). */
+const PK = { rows: [], sel: 0, onPick: null };
+function openPicker(title, rows, onPick) {
+  Object.assign(PK, { rows, sel: 0, onPick }); S.pick = true;
+  $('pkHead').textContent = title; drawPicker(); $('pick').classList.remove('hidden');
+}
+function closePicker() { S.pick = false; $('pick').classList.add('hidden'); }
+function drawPicker() {
+  PK.sel = Math.max(0, Math.min(PK.sel, PK.rows.length - 1));
+  const top = Math.max(0, PK.sel - 3);
+  $('pkList').innerHTML = PK.rows.map((r, k) => `<div class="br${k === PK.sel ? ' sel' : ''}">${r.replace(/</g, '&lt;')}</div>`).join('');
+  $('pkList').style.transform = `translateY(${-top * 86}px)`;
+}
+function pickerKey(key) {
+  switch (key) {
+    case 'Up': PK.sel--; return drawPicker();
+    case 'Down': PK.sel++; return drawPicker();
+    case 'ChannelUp': PK.sel -= 6; return drawPicker();
+    case 'ChannelDown': PK.sel += 6; return drawPicker();
+    case 'OK': return PK.onPick && PK.onPick(PK.sel);
+    case 'Back': case 'Left': case 'Guide': return closePicker();
+  }
+}
+
+/* ⏩ / ⏪: one tap seeks, two quick taps skip / start over. */
+const TAP = {};
+function tap(id, single, double) {
+  if (TAP[id]) { clearTimeout(TAP[id]); TAP[id] = 0; return double(); }
+  TAP[id] = setTimeout(() => { TAP[id] = 0; single(); }, 380);
+}
+function seekBy(d) {
+  try { vid.currentTime = Math.max(0, (vid.currentTime || 0) + d); } catch (e) {}
+  vcr(d > 0 ? '▶▶ +' + d + 's' : '◀◀ ' + d + 's'); clearTimeout(S.vcrT); S.vcrT = setTimeout(() => vcr(S.paused ? '❚❚ PAUSE' : ''), 1100);
 }
 function openGuide() {
   if (NATIVE) Android.vRect(1054 / 1920, 60 / 1080, 0.42, 0.42);
-  S.guide = true; G.dec = DEC; buildGuide(); document.body.classList.add('guide');
+  S.guide = true; G.dec = S.vod ? S.vod.kind : DEC; buildGuide(); document.body.classList.add('guide');
   $('guide').classList.remove('hidden'); $('banner').classList.add('hidden');
-  moveGuide(S.idx);
+  moveGuide(S.vod ? 0 : S.idx);
 }
 function closeGuide() { if (NATIVE && S.guide) Android.vRect(0, 0, 1, 1); S.guide = false; document.body.classList.remove('guide'); $('guide').classList.add('hidden'); }
 function tuneFromGuide(k) {
+  if (isVod(G.dec)) return pickVod(k);
   closeGuide();
   if (G.dec !== DEC) { DEC = G.dec; CHANNELS = G.list; store.set('rt:dec', DEC); S.last = k; S.idx = -1; return tune(k); }
   if (k !== S.idx) tune(k); else showBanner();
@@ -549,14 +644,14 @@ function tuneFromGuide(k) {
 /* ---------- remote ---------- */
 function remote(key) {
   if (S.blk) return blockedKey(key);
-  if (key === 'Rewind' && lastBlock && Date.now() - lastBlock.at < 10000) return undoBlock();
+  if (S.pick) return pickerKey(key);
   if (/^\d$/.test(key)) return digit(key);
   if (S.guide) {
     switch (key) {
       case 'Up': return moveGuide(S.gSel - 1);
       case 'Down': return moveGuide(S.gSel + 1);
-      case 'ChannelUp': return moveGuide(S.gSel - 5);
-      case 'ChannelDown': return moveGuide(S.gSel + 5);
+      case 'ChannelUp': return moveGuide(S.gSel - (isVod(G.dec) ? 10 : 5));
+      case 'ChannelDown': return moveGuide(S.gSel + (isVod(G.dec) ? 10 : 5));
       case 'OK': return tuneFromGuide(S.gSel);
       case 'Left': return switchTab(-1);
       case 'Right': return switchTab(1);
@@ -575,9 +670,9 @@ function remote(key) {
       if (vid.paused) { vid.play().catch(() => {}); S.paused = false; vcr('▶ PLAY'); setTimeout(() => { if (!S.paused) vcr(''); }, 1500); }
       else { vid.pause(); S.paused = true; vcr('❚❚ PAUSE', true); }
       return;
-    case 'Rewind': return startOver();
-    case 'Block': return blockCurrent();
-    case 'FastForward': return skipShow();
+    case 'Rewind': return tap('rw', () => seekBy(-15), startOver);
+    case 'FastForward': return tap('ff', () => seekBy(30), skipShow);
+    case 'Block': return seekBy(30);          // holding ⏩ on the remote
     case 'Back':
       if (Date.now() - S.backAt < 2500) return powerOff();
       S.backAt = Date.now(); toast('Press BACK again to turn off'); return;

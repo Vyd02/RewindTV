@@ -24,9 +24,11 @@ To update, run the same URL again. It installs right over the old version.
 | Up / Down | Channel up / down |
 | OK | Open the guide (OK again tunes the highlighted channel) |
 | Left | Flashback to the last channel |
+| In the guide: ◀ ▶ | Switch tabs: 50s–00s live channels, MOVIES and SHOWS (On Demand) |
 | Right | Show what's on |
 | Play/Pause | Pause, with a VCR-style readout |
-| Rewind / Fast forward | Jump back 15s / ahead 30s |
+| ⏩ tap / double-tap | Fast-forward 30s / skip to the next show |
+| ⏪ tap / double-tap | Rewind 15s / start the show over |
 | Back (twice) | Turn the TV off |
 
 ## Add or change channels
