@@ -175,6 +175,7 @@ class MainActivity : Activity() {
             }
         }
 
+        @JavascriptInterface fun version(): String = BuildConfig.VERSION_NAME
         @JavascriptInterface fun alive() { pageAlive = true; runOnUiThread { errorView.visibility = View.GONE } }
         @JavascriptInterface fun vLoad(url: String, startMs: Double) { runOnUiThread { video.load(url, startMs.toLong()) } }
         @JavascriptInterface fun vPlay() { runOnUiThread { video.play() } }

@@ -113,9 +113,11 @@ body.guide #screen { z-index: 3; }
 
 /* Fire TV: the video plays natively underneath, so the page has to be see-through. */
 #gHole { display: none; }
-body.native, body.native #tv, body.native #screen { background: transparent !important; }
+html.native, body.native, body.native #tv, body.native #screen { background: transparent !important; }
 body.native #vid { display: none; }
 body.native #guide { background: transparent; }
 body.native #gHole { display: block; position: absolute; left: 1054px; top: 60px; width: 806px; height: 454px; border-radius: 26px;
   box-shadow: 0 0 0 6px #fff3, 0 0 0 3000px #2a1278; }
 body.native.guide #screen { box-shadow: none; }
+
+#gVer { position: absolute; right: 40px; bottom: 14px; font-size: 28px; color: #ffffff66; z-index: 1; }
