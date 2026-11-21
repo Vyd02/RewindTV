@@ -17,19 +17,29 @@ A 90s cable box for Fire TV / Android TV. Dozens of channels of old cartoons, co
 
 To update, run the same URL again. It installs right over the old version.
 
-## Remote
+## Remote (Insignia / Fire TV)
 
 | Button | What it does |
 |---|---|
-| Up / Down | Channel up / down |
-| OK | Open the guide (OK again tunes the highlighted channel) |
+| Up / Down or CH ▲▼ | Channel up / down |
+| OK / Menu (☰) | Open the guide (OK again tunes the highlighted channel) |
 | Left | Flashback to the last channel |
 | In the guide: ◀ ▶ | Switch tabs: 50s–00s live channels, MOVIES and SHOWS (On Demand) |
 | Right | Show what's on |
-| Play/Pause | Pause, with a VCR-style readout |
+| Play/Pause | Pause, with a VCR-style readout · in guide opens Blocked Tapes + Adult PIN settings |
 | ⏩ tap / double-tap | Fast-forward 30s / skip to the next show |
 | ⏪ tap / double-tap | Rewind 15s / start the show over |
 | Back (twice) | Turn the TV off |
+| Number keys | Direct channel entry · also used to enter the adult PIN |
+
+### Adult lock (SKIN + XXX)
+Open the guide → Play/Pause to open Blocked Tapes. At the bottom you’ll see options to **Set adult PIN** or **Clear adult PIN**. Once a PIN is set, tuning to SKIN or XXX asks for the 4-digit code (unlocked for the rest of the session).
+
+### Other quality-of-life
+- Remembers the last channel you watched **per decade**
+- On Demand resumes where you left off (movies & episodes)
+- Faster recovery when a tape fails to start
+- Broader, higher-volume hardcore (XXX) channel with gay content filtered out
 
 ## Add or change channels
 
@@ -38,5 +48,5 @@ Edit `app/src/main/assets/channels.js`. Each channel is just an Internet Archive
 ## Notes
 
 - Videos come from the Internet Archive. What's on each channel depends on what people have uploaded there.
-- No content filter: channels show whatever is on the Internet Archive for that search.
+- Adult channels filter out gay content and anything that looks underage (user preference).
 - The signing key (`app/rewindtv.keystore`) is committed on purpose so every build can update the last one.

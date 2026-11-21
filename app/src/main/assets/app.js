@@ -5,8 +5,9 @@
 const SLOT_MS = 30 * 60 * 1000;      // schedule moves in half-hour blocks, like a real guide
 const LIST_ROWS = 400;               // how many items each channel draws from (higher = more variety)
 const LIST_TTL = 12 * 3600 * 1000;   // refresh channel lists twice a day
-const STALL_MS = 12000;              // skip a tape that won't start
-const STATIC_MS = 900;               // static only plays for a beat, then a quiet "TUNING..." card
+const STALL_MS = 6500;               // skip a tape that won't start (faster recovery)
+const STATIC_MS = 700;               // static only plays for a beat, then a quiet "TUNING..." card
+const ADULT_KEYS = new Set(['xxx', 'skin']);  // channels that can be PIN-locked
 const $ = id => document.getElementById(id);
 
 const screen = $('screen'), tv = $('tv');
@@ -53,7 +54,25 @@ function _v(type, pos, dur) {
 const S = {
   idx: 0, last: 0, token: 0, guide: false, gSel: 0, paused: false,
   lists: {}, meta: {}, playing: null, stallTimer: 0, backAt: 0, digits: '', digitTimer: 0,
+  adultUnlocked: false, pinEntry: '', pinMode: null, // null | 'unlock' | 'set' | 'confirm'
 };
+
+/* ---------- persistence helpers ---------- */
+const store = {
+  get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+};
+// Per-decade last channel (key) so switching tabs restores where you were.
+function lastChFor(dec) { return (store.get('rt:lastCh') || {})[dec] || null; }
+function setLastCh(dec, key) {
+  const m = store.get('rt:lastCh') || {};
+  m[dec] = key;
+  store.set('rt:lastCh', m);
+}
+// Adult lock: simple 4-digit PIN. Empty string = unlocked by default until user sets one.
+function adultPin() { return store.get('rt:pin') || ''; }
+function setAdultPin(p) { store.set('rt:pin', String(p || '')); }
+function isAdultLocked() { return !!adultPin() && !S.adultUnlocked; }
 
 /* ---------- fit the 1920x1080 stage to whatever screen we're on ---------- */
 function fit() {
@@ -65,9 +84,8 @@ addEventListener('resize', fit); fit(); setTimeout(fit, 300); setTimeout(fit, 15
 
 /* ---------- networking: native bridge on the Fire TV, fetch in a browser ---------- */
 /* ---------- decade tabs ---------- */
-let DEC = (store0('rt:dec') && LINEUPS[store0('rt:dec')]) ? store0('rt:dec') : DEFAULT_DECADE;
+let DEC = (store.get('rt:dec') && LINEUPS[store.get('rt:dec')]) ? store.get('rt:dec') : DEFAULT_DECADE;
 let CHANNELS = lineup(DEC);
-function store0(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
 
 const pending = {}; let reqId = 0;
 function get(url) {
@@ -90,10 +108,6 @@ const pad = n => String(n).padStart(2, '0');
 function clock(t = new Date()) { let h = t.getHours() % 12 || 12; return `${h}:${pad(t.getMinutes())}${t.getHours() < 12 ? 'a' : 'p'}`; }
 function slotLabel(ms) { return clock(new Date(ms)); }
 function cleanTitle(t) { return String(t || 'Untitled').replace(/_/g, ' ').replace(/\s+/g, ' ').trim(); }
-const store = {
-  get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } },
-  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
-};
 
 /* ---------- channel lists ---------- */
 // Hand-checked tape lists (only sharp, watchable copies) built by tools/curate.py and kept on GitHub.
@@ -282,25 +296,51 @@ function openBlocked() {
 function closeBlocked() { S.blk = false; $('blk').classList.add('hidden'); }
 function drawBlocked() {
   const ids = blockedIds();
-  blkSel = Math.max(0, Math.min(blkSel, ids.length - 1));
-  $('blkList').innerHTML = ids.length
-    ? ids.map((id, k) => `<div class="br${k === blkSel ? ' sel' : ''}">${blockMap[id].replace(/</g, '&lt;')}</div>`).join('')
+  const pinSet = !!adultPin();
+  // Extra rows at the bottom for adult lock management.
+  const extra = [
+    { id: '__pin__', label: pinSet ? '🔒 Change adult PIN (SKIN + XXX)' : '🔒 Set adult PIN (locks SKIN + XXX)' },
+    { id: '__clearpin__', label: pinSet ? '🔓 Clear adult PIN (unlock permanently)' : null },
+  ].filter(x => x.label);
+  const all = ids.map(id => ({ id, label: blockMap[id] })).concat(extra);
+  blkSel = Math.max(0, Math.min(blkSel, all.length - 1));
+  $('blkList').innerHTML = all.length
+    ? all.map((row, k) => `<div class="br${k === blkSel ? ' sel' : ''}">${String(row.label).replace(/</g, '&lt;')}</div>`).join('')
     : '<div class="br empty">Nothing blocked. Hold ⏩ on a tape you never want to see.</div>';
   const top = Math.max(0, blkSel - 3);
   $('blkList').style.transform = `translateY(${-top * 86}px)`;
+  S._blkAll = all;
 }
 function blockedKey(key) {
-  const ids = blockedIds();
+  const all = S._blkAll || [];
   switch (key) {
     case 'Up': blkSel--; return drawBlocked();
     case 'Down': blkSel++; return drawBlocked();
     case 'OK': {
-      if (!ids.length) return;
-      const id = ids[blkSel]; const t = blockMap[id];
+      if (!all.length) return;
+      const row = all[blkSel];
+      if (row.id === '__pin__') {
+        closeBlocked();
+        S.pinMode = 'set';
+        S.pinEntry = '';
+        toast('Enter a new 4-digit PIN for adult channels', 4000);
+        $('osdNum').textContent = '____';
+        $('osdCall').textContent = 'PIN';
+        $('osd').classList.remove('hidden');
+        return;
+      }
+      if (row.id === '__clearpin__') {
+        setAdultPin('');
+        S.adultUnlocked = true;
+        toast('🔓 Adult lock cleared', 2500);
+        return drawBlocked();
+      }
+      // Normal unblock
+      const id = row.id; const t = blockMap[id];
       delete blockMap[id]; saveBlocks();
       toast('✅ Unblocked “' + t.slice(0, 40) + '”', 2500);
-      const row = $('blkList').children[blkSel];
-      if (row) { row.classList.add('gone'); setTimeout(drawBlocked, 350); } else drawBlocked();
+      const el = $('blkList').children[blkSel];
+      if (el) { el.classList.add('gone'); setTimeout(drawBlocked, 350); } else drawBlocked();
       return;
     }
     case 'Back': case 'PlayPause': case 'Left': case 'Guide': return closeBlocked();
@@ -314,9 +354,22 @@ async function tune(idx, opts = {}) {
   if (idx !== S.idx && S.idx >= 0) S.last = S.idx;
   S.idx = idx;
   const ch = CHANNELS[idx];
+
+  // Adult lock: require PIN for SKIN / XXX if a PIN is set and not unlocked this session.
+  if (ADULT_KEYS.has(ch.key.split(':')[1] || ch.key) && isAdultLocked() && !opts.force) {
+    S.pinMode = 'unlock';
+    S.pinEntry = '';
+    S.pendingAdultIdx = idx;
+    toast('🔒 Adult channel locked · enter 4-digit PIN', 4000);
+    osd({ num: '🔒', call: 'PIN' });
+    return;
+  }
+
   const token = ++S.token;
   S.vod = null;
-  store.set('rt:ch', { dec: ch.dec, num: ch.num, key: ch.key }); store.set('rt:dec', ch.dec);
+  store.set('rt:ch', { dec: ch.dec, num: ch.num, key: ch.key });
+  store.set('rt:dec', ch.dec);
+  setLastCh(ch.dec, ch.key);
   S.paused = false; vcr('');
   staticOn();
   osd(ch);
@@ -577,8 +630,26 @@ function pickVod(k) {
   VODSEL[G.dec] = k;
   if (G.dec === 'MOVIES') return playVod(it, 0, 'MOVIES');
   const onEp = S.vod && S.vod.item.id === it.id ? S.vod.ep : 0;
-  openPicker(it.title, it.eps.map((e, n) => `${pad(n + 1)}. ${e.t ? cleanTitle(e.t) : 'Episode ' + (n + 1)} · ${hm(e.len)}` + (S.vod && S.vod.item.id === it.id && n === S.vod.ep ? '  ▶ watching' : '')),
-    n => playVod(it, n, 'SHOWS'), onEp);
+  openPicker(it.title, it.eps.map((e, n) => {
+    const prog = loadVodProgress(it, n);
+    const mark = (S.vod && S.vod.item.id === it.id && n === S.vod.ep) ? '  ▶ watching'
+      : (prog > 30 ? '  ⏱ ' + hm(prog) : '');
+    return `${pad(n + 1)}. ${e.t ? cleanTitle(e.t) : 'Episode ' + (n + 1)} · ${hm(e.len)}${mark}`;
+  }), n => playVod(it, n, 'SHOWS'), onEp);
+}
+function vodProgressKey(item, ep) { return 'rt:vodpos:' + item.id + ':' + (ep || 0); }
+function saveVodProgress() {
+  const v = S.vod; if (!v || !vid || !isFinite(vid.currentTime)) return;
+  const t = Math.floor(vid.currentTime);
+  if (t < 20) return; // don't save tiny progress
+  store.set(vodProgressKey(v.item, v.ep), { t, at: Date.now(), title: v.item.title });
+}
+function loadVodProgress(item, ep) {
+  const p = store.get(vodProgressKey(item, ep));
+  if (!p || !p.t) return 0;
+  // Expire progress after 30 days
+  if (Date.now() - (p.at || 0) > 30 * 864e5) return 0;
+  return p.t;
 }
 async function playVod(item, ep, kind) {
   closePicker(); closeGuide();
@@ -588,16 +659,22 @@ async function playVod(item, ep, kind) {
   clearTimeout(S.blockTimer); S.cur = null; S.paused = false; vcr('');
   staticOn(); osd(ch);
   vid.pause(); vid.removeAttribute('src'); vid.load();
-  await play(ch, [item], 0, 0, token, 0, ep);
+  const resume = loadVodProgress(item, ep);
+  await play(ch, [item], 0, resume * 1000, token, 0, ep);
   if (token !== S.token) return;
+  if (resume > 30) toast('▶ Resuming from ' + hm(resume), 2200);
   const next = kind === 'SHOWS' && ep + 1 < item.eps.length ? 'Next: episode ' + (ep + 2) + ' plays automatically' : 'On Demand · ⏪⏪ start over · CH ▲▼ back to live TV';
   $('bnNext').textContent = next; showBanner();
 }
 function vodNext() {
   const v = S.vod; if (!v) return;
+  // Clear progress for the episode that just finished
+  try { store.set(vodProgressKey(v.item, v.ep), null); } catch (e) {}
   if (v.kind === 'SHOWS' && v.ep + 1 < v.item.eps.length) return playVod(v.item, v.ep + 1, v.kind);
   S.vod = null; toast('That\u2019s the end. Back to live TV', 2500); tune(S.idx);
 }
+// Periodically save On Demand progress
+setInterval(() => { if (S.vod && !S.paused) saveVodProgress(); }, 15000);
 
 /* A pop-up list to pick from (episodes). */
 const PK = { rows: [], sel: 0, onPick: null };
@@ -643,7 +720,21 @@ function closeGuide() { if (NATIVE && S.guide) Android.vRect(0, 0, 1, 1); S.guid
 function tuneFromGuide(k) {
   if (isVod(G.dec)) return pickVod(k);
   closeGuide();
-  if (G.dec !== DEC) { DEC = G.dec; CHANNELS = G.list; store.set('rt:dec', DEC); S.last = k; S.idx = -1; return tune(k); }
+  if (G.dec !== DEC) {
+    DEC = G.dec;
+    CHANNELS = G.list;
+    store.set('rt:dec', DEC);
+    // Prefer highlighted row; otherwise restore last channel for that decade.
+    const lastKey = lastChFor(DEC);
+    let idx = k;
+    if (lastKey) {
+      const found = CHANNELS.findIndex(c => c.key === lastKey);
+      if (found >= 0) idx = found;
+    }
+    S.last = S.idx;
+    S.idx = -1;
+    return tune(idx);
+  }
   if (k !== S.idx) tune(k); else showBanner();
 }
 
@@ -685,6 +776,55 @@ function remote(key) {
   }
 }
 function digit(d) {
+  // PIN entry mode for adult lock / setting PIN
+  if (S.pinMode) {
+    S.pinEntry = (S.pinEntry + d).slice(0, 4);
+    $('osdNum').textContent = '•'.repeat(S.pinEntry.length).padEnd(4, '_');
+    $('osdCall').textContent = 'PIN';
+    $('osd').classList.remove('hidden'); clearTimeout(osdTimer);
+    if (S.pinEntry.length < 4) return;
+    const entered = S.pinEntry;
+    S.pinEntry = '';
+    if (S.pinMode === 'unlock') {
+      if (entered === adultPin()) {
+        S.adultUnlocked = true;
+        S.pinMode = null;
+        toast('🔓 Unlocked for this session', 2500);
+        const idx = S.pendingAdultIdx;
+        S.pendingAdultIdx = null;
+        if (typeof idx === 'number') tune(idx, { force: true });
+      } else {
+        toast('❌ Wrong PIN', 2000);
+        S.pinMode = null;
+        osd(CHANNELS[S.idx] || { num: '—', call: '' });
+      }
+      return;
+    }
+    if (S.pinMode === 'set') {
+      S.pendingPin = entered;
+      S.pinMode = 'confirm';
+      toast('Enter PIN again to confirm', 3000);
+      $('osdNum').textContent = '____';
+      return;
+    }
+    if (S.pinMode === 'confirm') {
+      if (entered === S.pendingPin) {
+        setAdultPin(entered);
+        S.pinMode = null;
+        S.pendingPin = null;
+        toast('🔒 Adult lock set · SKIN & XXX now require PIN', 4000);
+      } else {
+        toast('PINs did not match · try again', 2500);
+        S.pinMode = null;
+        S.pendingPin = null;
+      }
+      osd(CHANNELS[S.idx] || { num: '—', call: '' });
+      return;
+    }
+    return;
+  }
+
+  // Normal direct channel entry
   S.digits = (S.digits + d).slice(-2);
   $('osdNum').textContent = S.digits.padEnd(2, '_'); $('osdCall').textContent = '';
   $('osd').classList.remove('hidden'); clearTimeout(osdTimer);
@@ -716,8 +856,13 @@ window.RT = { remote, _got, _v, sleep, wake, toast: t => toast(t, 5000) };
 if (window.Android && Android.alive) Android.alive();
 
 function boot() {
-const saved = store.get('rt:ch');
-  const start = Math.max(0, CHANNELS.findIndex(c => saved && (saved.key ? c.key === saved.key : c.num === saved.num && c.dec === saved.dec)));
+  // Prefer the last channel we were on in this decade; fall back to global last channel.
+  const lastKey = lastChFor(DEC);
+  const saved = store.get('rt:ch');
+  let start = -1;
+  if (lastKey) start = CHANNELS.findIndex(c => c.key === lastKey);
+  if (start < 0 && saved) start = CHANNELS.findIndex(c => saved.key ? c.key === saved.key : (c.num === saved.num && c.dec === saved.dec));
+  if (start < 0) start = 0;
   S.idx = start; S.last = start;
   setTimeout(() => screen.classList.remove('on'), 1100);
   tune(start);
