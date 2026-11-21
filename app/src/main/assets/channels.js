@@ -8,9 +8,10 @@ const SAFE = ' AND mediatype:movies' +
   ' AND NOT language:(spa OR spanish OR por OR portuguese OR fre OR french OR ger OR german OR ita OR italian OR jpn OR japanese OR rus OR russian OR chi OR chinese OR kor OR korean OR hin OR hindi OR ara OR arabic OR tur OR turkish)' +
   ' AND NOT (coffee4binky OR "Tyrone L. Warbasse" OR "Las Vegas Time Machine" OR Lazerverse OR "Going Buoy" OR "Spaced Out Truckers" OR "Phony Phootbawl" OR description:patreon OR title:patreon)';
 // Adult channels also get this: drops anything titled or tagged in a way that suggests minors.
-// Adult channels: no gay content.
+// Adult channels: no gay content (user preference).
 const NO_GAY = ' AND NOT (subject:gay OR title:gay OR subject:homosexual OR subject:"gay porn" OR subject:"gay male" OR subject:twink OR title:twink OR subject:bareback OR title:bareback OR subject:lgbt OR subject:queer OR subject:"all male" OR subject:"men only" OR subject:"male on male" OR subject:bisexual OR title:bisexual OR subject:gayporn OR title:gayporn OR subject:"gay sex" OR subject:yiff OR subject:femboy OR subject:sissy OR subject:crossdress OR title:crossdress)';
-const NO_MINORS = ' AND NOT (title:teen OR subject:teen OR title:teens OR title:young OR subject:young OR title:girl OR title:girls OR title:schoolgirl OR title:school OR title:lolita OR subject:lolita OR title:minor OR title:underage OR title:child OR title:kid OR title:barely OR title:petite OR subject:hentai OR title:jailbait OR subject:jailbait)';
+// Drop anything that even hints at minors / underage / schoolgirl content.
+const NO_MINORS = ' AND NOT (title:teen OR subject:teen OR title:teens OR title:young OR subject:young OR title:girl OR title:girls OR title:schoolgirl OR title:school OR title:lolita OR subject:lolita OR title:minor OR title:underage OR title:child OR title:kid OR title:barely OR title:petite OR subject:hentai OR subject:"18+" OR title:"18+" OR title:jailbait OR subject:jailbait)';
 
 const THEMES = {
   // ---- networks & blocks ----
@@ -62,9 +63,11 @@ const THEMES = {
   horror:      { call: 'FRITE', name: 'Creature Feature',    color: '#76ff03', q: '(collection:SciFi_Horror OR subject:horror)' },
   latenight:   { call: 'LATE',  name: 'Late Night',          color: '#7c4dff', q: 'subject:"late night"' },
   skin:        { call: 'SKIN',  name: 'Late-Night Thrillers', color: '#c51162', q: '(subject:"erotic thriller" OR subject:softcore)', adult: true },
-  // Hardcore only: adult VHS/film collections, stag films, and porn/hardcore-tagged movies, minus streams, podcasts,
-  // news, comedy, softcore/Playboy, cartoons, hardcore *punk* and other 18+ stuff that isn't porn.
-  xxx:         { call: 'XXX',   name: 'After Dark · Hardcore', color: '#d50000', q: '(subject:hardcore OR subject:anal OR title:anal OR title:hardcore OR subject:"anal sex" OR subject:xxx OR title:xxx) AND (collection:adultvhs OR collection:adultfilm OR subject:porn OR subject:pornography OR subject:"adult film" OR subject:xxx OR subject:sex) AND NOT (collection:twitchstreams OR collection:social-media-video OR collection:loggedin OR collection:altcensored OR collection:fringe OR subject:punk OR subject:metal OR subject:band OR subject:music OR subject:podcast OR subject:news OR subject:documentary OR subject:comedy OR subject:anime OR subject:hentai OR subject:cartoon OR subject:animation OR subject:softcore OR subject:playboy OR subject:gaming)', adult: true, allYears: true },
+  // Hardcore only: broad real porn / adult film search across Archive collections and tags.
+  // Prioritizes actual pornographic video (VHS, adult film, stag, hardcore) while excluding
+  // gay content (via NO_GAY), anything that looks underage (via NO_MINORS), softcore/Playboy,
+  // cartoons/hentai, music/punk, streams, podcasts, news, and documentaries.
+  xxx:         { call: 'XXX',   name: 'After Dark · Hardcore', color: '#d50000', q: '(subject:porn OR subject:pornography OR subject:xxx OR subject:hardcore OR subject:"adult film" OR subject:adultvhs OR collection:adultvhs OR collection:adultfilm OR collection:pornography OR title:xxx OR title:porn OR subject:anal OR title:anal OR subject:"anal sex" OR subject:stag OR subject:"stag film" OR subject:erotica) AND NOT (collection:twitchstreams OR collection:social-media-video OR collection:loggedin OR collection:altcensored OR collection:fringe OR subject:punk OR subject:metal OR subject:band OR subject:music OR subject:podcast OR subject:news OR subject:documentary OR subject:comedy OR subject:anime OR subject:hentai OR subject:cartoon OR subject:animation OR subject:softcore OR subject:playboy OR subject:gaming OR subject:workout OR subject:exercise)', adult: true, allYears: true },
 };
 
 const DECADES = [

@@ -33,7 +33,8 @@ OUT = os.path.join(ROOT, 'lists')
 CACHE = os.path.join(ROOT, '.cache', 'meta.json')
 
 SEARCH_ROWS = 400      # how deep to look per channel
-KEEP = 90              # tapes to keep per channel
+KEEP = 90              # tapes to keep per channel (default)
+KEEP_XXX = 350         # hardcore channel: keep many more so the lineup feels endless
 MAX_EPISODES = 60      # cap for "complete series" items with hundreds of files
 MIN_HEIGHT = 480
 # Quality floors (kbps by resolution). Older decades keep the looser bar (that's what exists);
@@ -43,7 +44,7 @@ PROFILES = {
     'clean':   {480: 1800, 576: 2000, 720: 2600, 1080: 4000},
 }
 DECADE_PROFILE = {'all': 'classic', '50s': 'classic', '60s': 'classic', '70s': 'classic', '80s': 'clean', '90s': 'clean', '00s': 'clean'}
-DEEP_ROWS = {'clean': 900, 'classic': SEARCH_ROWS, 'all': 2500}
+DEEP_ROWS = {'clean': 900, 'classic': SEARCH_ROWS, 'all': 2500}  # deeper search for the all-years XXX channel
 VIDEO_EXT = ('.mp4', '.m4v', '.mkv')
 UA = {'User-Agent': 'RewindTV-curator/1.0 (github.com/Vyd02/RewindTV)'}
 
@@ -174,10 +175,12 @@ def main():
                     return i, None
 
             # Look up tapes in batches until we have enough good ones.
+            # XXX (all-years hardcore) keeps hundreds of titles so the channel feels endless.
+            target = KEEP_XXX if (dec == 'all' or theme == 'xxx') else KEEP
             kept = []
             pos = 0
             with cf.ThreadPoolExecutor(16) as ex:
-                while pos < len(docs) and len(kept) < (440 if dec == 'all' else KEEP):
+                while pos < len(docs) and len(kept) < (target + 80):
                     batch = docs[pos:pos + 48]
                     pos += 48
                     todo = [d['identifier'] for d in batch if d['identifier'] not in cache]
@@ -188,7 +191,7 @@ def main():
                         eps = cache.get(d['identifier'])
                         if eps:
                             kept.append({'id': d['identifier'], 't': re.sub(r'\s+', ' ', str(d.get('title') or d['identifier']).replace('_', ' ')).strip()[:140], 'e': eps})
-            kept = english.keep_english(kept, langcache)[:(400 if dec == 'all' else KEEP)]
+            kept = english.keep_english(kept, langcache)[:target]
             english.save_cache(langcache)
             json.dump({'call': ch['call'], 'q': ch['q'], 'updated': time.strftime('%Y-%m-%d'), 'items': kept},
                       open(os.path.join(OUT, dec, theme + '.json'), 'w'), separators=(',', ':'))

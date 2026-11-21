@@ -16,7 +16,7 @@ Rewind TV is a sideloaded **Fire TV / Android TV app** that recreates retro cabl
 - **Channels** are numbered from 1 on each decade tab:
   - Network/block channels: Adult Swim, Toonami, Cartoon Network, Boomerang, Nickelodeon/Nicktoons, Nick Jr., Nick at Nite, Disney Channel, Fox Kids, Kids' WB, One Saturday Morning, Jetix, PBS Kids, TGIF, MTV, VH1, Comedy Central, Sci-Fi Channel, USA Up All Night. Each only appears on the decades it was actually on air.
   - Type channels: cartoons, Saturday morning, commercials, kids network breaks, toy/game ads, classic TV, sitcoms, game shows, music videos, taped-off-TV VHS, news, sports, wrestling, anime, computer TV, weather, infomercials, PSAs, school films, trailers, movies, comedy movies, noir, westerns, horror, late night, softcore ("SKIN").
-  - One hardcore adult channel ("After Dark · Hardcore", call sign XXX), shared across all decade tabs.
+  - One hardcore adult channel ("After Dark · Hardcore", call sign XXX), shared across all decade tabs. It pulls from a broad Archive search for real porn / adult film / stag / hardcore titles (hundreds of tapes after curation), with gay content and anything that looks underage filtered out.
 - **Broadcast clock:** each channel plays its tapes back-to-back around the clock, reshuffled daily. Everyone tuning in at the same moment sees the same thing. Coming back later, the channel has moved on.
   - Long VHS recordings and marathons (over 1 hour) air in rotating half-hour blocks.
   - Movie channels always air whole films, up to 4 hours.
@@ -98,7 +98,7 @@ The Internet Archive has huge amounts of retro TV, but uneven quality: many uplo
    - opens each tape's file list,
    - groups files into episodes and picks the best copy of each,
    - keeps only tapes that pass the quality bar,
-   - writes `lists/<decade>/<theme>.json`, plus `lists/all/xxx.json` for the all-years adult channel,
+   - writes `lists/<decade>/<theme>.json`, plus `lists/all/xxx.json` for the all-years adult channel (keeps ~350 titles so the XXX channel has deep variety),
    - writes `lists/index.json` with per-channel counts. The app hides channels with fewer than 10 tapes.
 2. **Quality profiles:**
    - **classic** (50s–70s and the all-years channel): ≥480p, and ≥900 kbps at 480p (higher floors at 576/720/1080).
