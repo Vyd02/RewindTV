@@ -3,7 +3,7 @@
 'use strict';
 
 const SLOT_MS = 30 * 60 * 1000;      // schedule moves in half-hour blocks, like a real guide
-const LIST_ROWS = 250;               // how many items each channel draws from
+const LIST_ROWS = 400;               // how many items each channel draws from (fallback search)
 const LIST_TTL = 12 * 3600 * 1000;   // refresh channel lists twice a day
 const STALL_MS = 12000;              // skip a tape that won't start
 const STATIC_MS = 900;               // static only plays for a beat, then a quiet "TUNING..." card

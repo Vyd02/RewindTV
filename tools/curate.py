@@ -43,7 +43,7 @@ PROFILES = {
     'clean':   {480: 1800, 576: 2000, 720: 2600, 1080: 4000},
 }
 DECADE_PROFILE = {'all': 'classic', '50s': 'classic', '60s': 'classic', '70s': 'classic', '80s': 'clean', '90s': 'clean', '00s': 'clean'}
-DEEP_ROWS = {'clean': 900, 'classic': SEARCH_ROWS, 'all': 1700}
+DEEP_ROWS = {'clean': 900, 'classic': SEARCH_ROWS, 'all': 2500}
 VIDEO_EXT = ('.mp4', '.m4v', '.mkv')
 UA = {'User-Agent': 'RewindTV-curator/1.0 (github.com/Vyd02/RewindTV)'}
 

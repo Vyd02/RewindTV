@@ -9,8 +9,8 @@ const SAFE = ' AND mediatype:movies' +
   ' AND NOT (coffee4binky OR "Tyrone L. Warbasse" OR "Las Vegas Time Machine" OR Lazerverse OR "Going Buoy" OR "Spaced Out Truckers" OR "Phony Phootbawl" OR description:patreon OR title:patreon)';
 // Adult channels also get this: drops anything titled or tagged in a way that suggests minors.
 // Adult channels: no gay content.
-const NO_GAY = ' AND NOT (subject:gay OR title:gay OR subject:homosexual OR subject:"gay porn" OR subject:"gay male" OR subject:twink OR title:twink OR subject:bareback OR title:bareback OR subject:lgbt OR subject:queer OR subject:"all male" OR subject:"men only" OR subject:"male on male" OR subject:bisexual OR title:bisexual)';
-const NO_MINORS = ' AND NOT (title:teen OR subject:teen OR title:teens OR title:young OR subject:young OR title:girl OR title:girls OR title:schoolgirl OR title:school OR title:lolita OR subject:lolita OR title:minor OR title:underage OR title:child OR title:kid OR title:barely OR title:petite OR subject:hentai)';
+const NO_GAY = ' AND NOT (subject:gay OR title:gay OR subject:homosexual OR subject:"gay porn" OR subject:"gay male" OR subject:twink OR title:twink OR subject:bareback OR title:bareback OR subject:lgbt OR subject:queer OR subject:"all male" OR subject:"men only" OR subject:"male on male" OR subject:bisexual OR title:bisexual OR subject:gayporn OR title:gayporn OR subject:"gay sex" OR subject:yiff OR subject:femboy OR subject:sissy OR subject:crossdress OR title:crossdress)';
+const NO_MINORS = ' AND NOT (title:teen OR subject:teen OR title:teens OR title:young OR subject:young OR title:girl OR title:girls OR title:schoolgirl OR title:school OR title:lolita OR subject:lolita OR title:minor OR title:underage OR title:child OR title:kid OR title:barely OR title:petite OR subject:hentai OR title:jailbait OR subject:jailbait)';
 
 const THEMES = {
   // ---- networks & blocks ----
