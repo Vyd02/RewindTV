@@ -202,6 +202,12 @@ function scheduleAt(ch, list, t) {
 }
 // The show after the one at time t.
 function nextAfter(ch, list, t) { const now = scheduleAt(ch, list, t); return scheduleAt(ch, list, now.end + 1000); }
+// The show at position k in today's running order, starting right now (used after a skip).
+function entryAt(ch, list, k) {
+  const t = Date.now(), tl = timeline(ch, list, t), n = tl.order.length;
+  const idx = ((k % n) + n) % n, e = tl.order[idx];
+  return { item: list[e.i], i: e.i, slot: e.slot, from: e.from, start: t - e.from * 1000, airs: t, end: t + e.len * 1000, tl: idx };
+}
 // When the current block's airtime is over, move on even if the tape keeps going.
 function armBlock(sch) {
   clearTimeout(S.blockTimer); S.cur = sch;
@@ -362,7 +368,7 @@ async function tune(idx, opts = {}) {
   S.idx = idx;
 
   const token = ++S.token;
-  S.vod = null;
+  S.vod = null; S.offClock = false;
   store.set('rt:ch', { dec: ch.dec, num: ch.num, key: ch.key });
   store.set('rt:dec', ch.dec);
   setLastCh(ch.dec, ch.key);
@@ -432,9 +438,13 @@ function skip() {
   if (S.vod) return vodNext();
   const p = S.playing; if (!p) return;
   staticOn();
-  const n = nextAfter(p.ch, p.list, Date.now());
+  // Step to the next show in today's lineup after the one playing (not "next on the clock",
+  // which never changes between quick skips and just bounced between two shows).
+  const here = S.cur && S.cur.tl != null ? S.cur.tl : scheduleAt(p.ch, p.list, Date.now()).tl;
+  let n = entryAt(p.ch, p.list, here + 1);
+  if (n.i === p.i && n.slot === p.slot) n = entryAt(p.ch, p.list, here + 2);
+  S.offClock = true;              // after a skip, keep going in order until you change channels
   armBlock(n);
-  if (n.i === p.i) return play(p.ch, p.list, p.i + 1, 0, p.token, p.tries + 1, null);
   play(p.ch, p.list, n.i, n.from * 1000, p.token, p.tries + 1, n.slot);
 }
 
@@ -453,6 +463,11 @@ vid.addEventListener('ended', () => { const p = S.playing; if (!p) return; stati
 // Go to whatever the channel's clock says is on now. If the clock still says the tape that
 // just ended (its real length was shorter than listed), go to the next show from its top.
 function followClock(p, tries) {
+  if (S.offClock && S.cur) {
+    const n = entryAt(p.ch, p.list, S.cur.tl + 1);
+    armBlock(n);
+    return play(p.ch, p.list, n.i, n.from * 1000, p.token, tries, n.slot);
+  }
   const now = Date.now();
   let sch = scheduleAt(p.ch, p.list, now);
   if (S.cur && sch.tl === S.cur.tl) { sch = nextAfter(p.ch, p.list, now); armBlock(sch); return play(p.ch, p.list, sch.i, sch.from * 1000, p.token, tries, sch.slot); }
