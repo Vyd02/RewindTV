@@ -237,7 +237,7 @@ function armBlock(sch) {
   const token = S.token;
   S.blockTimer = setTimeout(() => {
     const p = S.playing;
-    if (p && token === S.token && !S.inBreak) { staticOn(); nextNatural(p); }
+    if (p && token === S.token && !S.inBreak) nextNatural(p);
   }, Math.max(5000, sch.end - Date.now() + 500));
 }
 
@@ -249,8 +249,9 @@ function videos(item) {
   const id = item.id;
   if (item.eps && item.eps.length) {
     const url = n => 'https://archive.org/download/' + encodeURIComponent(id) + '/' + n.split('/').map(encodeURIComponent).join('/');
+    const smooth = n => /\.ia\.mp4$/i.test(n) ? 0 : /\.mp4$/i.test(n) ? 1 : 2;
     return Promise.resolve(item.eps.map(e => ({
-      cands: [e.n].concat(e.a || []).map(url), heights: [e.h], len: e.len || 0, title: e.t ? cleanTitle(e.t) : '',
+      cands: [e.n].concat(e.a || []).sort((x, y) => smooth(x) - smooth(y)).map(url), heights: [e.h], len: e.len || 0, title: e.t ? cleanTitle(e.t) : '',
     })));
   }
   if (S.meta[id]) return S.meta[id];
@@ -487,11 +488,12 @@ function prefetch() {
     loadList(ch).then(list => videos(scheduleAt(ch, list, Date.now()).item)).catch(() => {});
   });
 }
-vid.addEventListener('waiting', () => { if (S.special || S.inBreak) return; clearTimeout(S.stallTimer); S.stallTimer = setTimeout(() => { if (vid.readyState < 3 && !S.paused) downgrade(); }, STALL_MS); });
+// Mid-show buffering: give the bigger buffer time to refill before swapping copies (swapping is its own glitch).
+vid.addEventListener('waiting', () => { if (S.special || S.inBreak) return; clearTimeout(S.stallTimer); S.stallTimer = setTimeout(() => { if (vid.readyState < 3 && !S.paused) downgrade(); }, 30000); });
 vid.addEventListener('ended', () => {
   if (S.special) return nextTrack();
   if (S.inBreak) return endBreak();
-  const p = S.playing; if (!p) return; staticOn(); if (S.vod) return vodNext();
+  const p = S.playing; if (!p) return; if (S.vod) return vodNext();
   nextNatural(p);
 });
 // Go to whatever the channel's clock says is on now. If the clock still says the tape that
@@ -592,7 +594,7 @@ function showBanner() {
 function toast(text, ms = 2000) { const t = $('toast'); t.textContent = text; t.classList.remove('hidden'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.add('hidden'), ms); }
 setInterval(() => {
   $('bnClock').textContent = clock(); $('gClock').textContent = clock();
-  const p = S.playing; if (p && p.f.len && vid.currentTime && !S.inBreak && !S.special) $('bnFill').style.width = (vid.currentTime / p.f.len * 100) + '%';
+  const p = S.playing; if (p && p.f.len && vid.currentTime && !S.inBreak && !S.special && !$('banner').classList.contains('hidden')) $('bnFill').style.width = (vid.currentTime / p.f.len * 100) + '%';
 }, 1000);
 
 /* ---------- guide ---------- */
@@ -943,7 +945,7 @@ async function maybeBreak(ch, then) {
 function endBreak() {
   const b = S.inBreak; if (!b) return;
   S.inBreak = null; clearTimeout(S.breakTimer); clearTimeout(S.breakStall);
-  if (b.token === S.token) { staticOn(); b.then(); }
+  if (b.token === S.token) b.then();
 }
 function cancelBreak() { S.inBreak = null; clearTimeout(S.breakTimer); clearTimeout(S.breakStall); }
 // A show ended (or its block ran out): break, then whatever's next, with a station ID.

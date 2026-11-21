@@ -229,3 +229,9 @@ body.guide #tune { display: none; }
 @keyframes tick { to { transform: translateX(-100%); } }
 body.special #banner { z-index: 5; }
 body.guide #prevue, body.guide #wx { opacity: 0; pointer-events: none; }
+
+/* Smoothness: nothing animates while it's hidden (hidden animations still cost the TV's GPU every frame). */
+.hidden, .hidden *, #guide.hidden *, #ident:not(.go), #ident:not(.go) * { animation: none !important; }
+body:not(.guide) #gSel, body:not(.guide) #gLogo b, body:not(.guide) #gTabs .tab.live::after, body:not(.guide) #gRows { animation: none !important; }
+body:not(.special) #pvRows, body:not(.special) #wxTicker span { animation: none !important; }
+#banner, #osd, #vcr, #toast, #ident { will-change: transform, opacity; }

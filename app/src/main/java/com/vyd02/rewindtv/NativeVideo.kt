@@ -13,6 +13,8 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 
@@ -28,7 +30,23 @@ class NativeVideo(ctx: Context, private val emit: (String, Long, Long) -> Unit) 
     private val main = Handler(Looper.getMainLooper())
     private var videoW = 16; private var videoH = 9; private var pixelRatio = 1f
 
-    private val player: ExoPlayer = ExoPlayer.Builder(ctx)
+    // Big buffers: the Internet Archive's servers are slow and bursty, so keep minutes of video downloaded
+    // ahead and wait for a healthy head start before playing, so playback never catches up and stutters.
+    private val loadControl = DefaultLoadControl.Builder()
+        .setBufferDurationsMs(
+            90_000,   // keep at least 90 s downloaded ahead
+            300_000,  // fill up to 5 minutes ahead
+            4_000,    // need 4 s ready before starting
+            12_000)   // after a stall, rebuild 12 s before resuming
+        .setPrioritizeTimeOverSizeThresholds(true)
+        .setTargetBufferBytes(160 * 1024 * 1024)
+        .build()
+
+    // Hardware decoders first; if one can't handle a file, fall back to another instead of failing.
+    private val renderers = DefaultRenderersFactory(ctx).setEnableDecoderFallback(true)
+
+    private val player: ExoPlayer = ExoPlayer.Builder(ctx, renderers)
+        .setLoadControl(loadControl)
         .setMediaSourceFactory(
             DefaultMediaSourceFactory(
                 DefaultHttpDataSource.Factory()
