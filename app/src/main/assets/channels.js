@@ -8,6 +8,8 @@ const SAFE = ' AND mediatype:movies' +
   ' AND NOT language:(spa OR spanish OR por OR portuguese OR fre OR french OR ger OR german OR ita OR italian OR jpn OR japanese OR rus OR russian OR chi OR chinese OR kor OR korean OR hin OR hindi OR ara OR arabic OR tur OR turkish)' +
   ' AND NOT (coffee4binky OR "Tyrone L. Warbasse" OR "Las Vegas Time Machine" OR Lazerverse OR "Going Buoy" OR "Spaced Out Truckers" OR "Phony Phootbawl" OR description:patreon OR title:patreon)';
 // Adult channels also get this: drops anything titled or tagged in a way that suggests minors.
+// Adult channels: no gay content.
+const NO_GAY = ' AND NOT (subject:gay OR title:gay OR subject:homosexual OR subject:"gay porn" OR subject:"gay male" OR subject:twink OR title:twink OR subject:bareback OR title:bareback OR subject:lgbt OR subject:queer OR subject:"all male" OR subject:"men only" OR subject:"male on male" OR subject:bisexual OR title:bisexual)';
 const NO_MINORS = ' AND NOT (title:teen OR subject:teen OR title:teens OR title:young OR subject:young OR title:girl OR title:girls OR title:schoolgirl OR title:school OR title:lolita OR subject:lolita OR title:minor OR title:underage OR title:child OR title:kid OR title:barely OR title:petite OR subject:hentai)';
 
 const THEMES = {
@@ -62,7 +64,7 @@ const THEMES = {
   skin:        { call: 'SKIN',  name: 'Late-Night Thrillers', color: '#c51162', q: '(subject:"erotic thriller" OR subject:softcore)', adult: true },
   // Hardcore only: adult VHS/film collections, stag films, and porn/hardcore-tagged movies, minus streams, podcasts,
   // news, comedy, softcore/Playboy, cartoons, hardcore *punk* and other 18+ stuff that isn't porn.
-  xxx:         { call: 'XXX',   name: 'After Dark',          color: '#d50000', q: '(collection:adultvhs OR collection:adultfilm OR subject:"stag film" OR subject:"stag films" OR subject:stag OR subject:hardcore OR (subject:porn OR subject:pornography OR subject:"adult film" OR subject:"adult movie" OR subject:xxx OR subject:"x-rated" OR subject:porno OR subject:"vintage porn" OR subject:"classic porn")) AND NOT (collection:twitchstreams OR collection:social-media-video OR collection:podcasts-video OR collection:podcasts_mirror OR collection:funnyordie OR collection:mirrortube OR collection:altcensored OR collection:fringe OR collection:television OR collection:loggedin OR collection:mensmagazines_post70s OR subject:punk OR subject:"hardcore punk" OR subject:metal OR subject:band OR subject:concert OR subject:"live music" OR subject:skate OR subject:gaming OR subject:"video game" OR subject:wrestling OR subject:techno OR subject:rave OR subject:horror OR subject:"horror film" OR subject:playboy OR subject:podcast OR subject:twitch OR subject:documentary OR subject:interview OR subject:news OR subject:trailer OR subject:comedy OR subject:parody OR subject:music OR subject:anime OR subject:hentai OR subject:cartoon OR subject:animation OR subject:softcore OR subject:"erotic thriller")', adult: true },
+  xxx:         { call: 'XXX',   name: 'After Dark · Hardcore', color: '#d50000', q: '(subject:hardcore OR subject:anal OR title:anal OR title:hardcore OR subject:"anal sex" OR subject:xxx OR title:xxx) AND (collection:adultvhs OR collection:adultfilm OR subject:porn OR subject:pornography OR subject:"adult film" OR subject:xxx OR subject:sex) AND NOT (collection:twitchstreams OR collection:social-media-video OR collection:loggedin OR collection:altcensored OR collection:fringe OR subject:punk OR subject:metal OR subject:band OR subject:music OR subject:podcast OR subject:news OR subject:documentary OR subject:comedy OR subject:anime OR subject:hentai OR subject:cartoon OR subject:animation OR subject:softcore OR subject:playboy OR subject:gaming)', adult: true, allYears: true },
 };
 
 const DECADES = [
@@ -276,12 +278,14 @@ function decadeClause(y) {
 function lineup(decId) {
   const d = DECADES.find(x => x.id === decId) || DECADES.find(x => x.id === DEFAULT_DECADE);
   const avail = (typeof window !== 'undefined' && window.AVAIL && window.AVAIL[d.id]) || null;
-  let keys = avail ? LINEUPS[d.id].filter(k => (avail[k] || 0) >= 10) : LINEUPS[d.id];
+  const allAvail = (typeof window !== 'undefined' && window.AVAIL && window.AVAIL.all) || {};
+  let keys = avail ? LINEUPS[d.id].filter(k => ((THEMES[k].allYears ? allAvail[k] : avail[k]) || 0) >= 10) : LINEUPS[d.id];
   // A decade still being checked: keep the full dial (unchecked channels use live search).
-  if (keys.length < 10) keys = LINEUPS[d.id].filter(k => !avail || !(k in avail) || avail[k] >= 10);
+  if (keys.length < 10) keys = LINEUPS[d.id].filter(k => THEMES[k].allYears || !avail || !(k in avail) || avail[k] >= 10);
   return keys.map((key, i) => {
     const t = THEMES[key];
-    return { num: i + 1, key: d.id + ':' + key, dec: d.id, call: t.call, name: t.name, color: t.color,
-             q: '(' + t.q + ')' + decadeClause(d.y) + (t.adult ? NO_MINORS : '') };
+    // allYears channels (the hardcore channel) pull from every decade and share one schedule on every tab.
+    return { num: i + 1, key: (t.allYears ? 'all' : d.id) + ':' + key, dec: d.id, call: t.call, name: t.name, color: t.color,
+             q: '(' + t.q + ')' + (t.allYears ? '' : decadeClause(d.y)) + (t.adult ? NO_MINORS + NO_GAY : '') };
   });
 }

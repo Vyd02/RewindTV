@@ -42,8 +42,7 @@
   "vhs": 87,
   "weather": 73,
   "western": 52,
-  "wrestling": 46,
-  "xxx": 21
+  "wrestling": 46
  },
  "50s": {
   "ads": 29,
@@ -63,8 +62,7 @@
   "tv": 31,
   "vhs": 78,
   "western": 79,
-  "wrestling": 3,
-  "xxx": 10
+  "wrestling": 3
  },
  "60s": {
   "ads": 65,
@@ -87,8 +85,7 @@
   "tv": 73,
   "vhs": 77,
   "western": 75,
-  "wrestling": 10,
-  "xxx": 28
+  "wrestling": 10
  },
  "70s": {
   "ads": 88,
@@ -111,8 +108,7 @@
   "tv": 89,
   "vhs": 66,
   "western": 69,
-  "wrestling": 35,
-  "xxx": 37
+  "wrestling": 35
  },
  "80s": {
   "ads": 63,
@@ -144,8 +140,7 @@
   "vh1": 42,
   "vhs": 75,
   "western": 62,
-  "wrestling": 60,
-  "xxx": 44
+  "wrestling": 60
  },
  "90s": {
   "abcsat": 15,
@@ -189,8 +184,10 @@
   "vhs": 83,
   "weather": 8,
   "western": 80,
-  "wrestling": 30,
-  "xxx": 51
+  "wrestling": 30
+ },
+ "all": {
+  "xxx": 241
  },
  "ondemand": {
   "movies": 547,

@@ -99,7 +99,7 @@ def main():
     total_before = total_after = 0
     for dec in sorted(os.listdir(LISTS)):
         d = os.path.join(LISTS, dec)
-        if not os.path.isdir(d) or dec == 'ondemand':
+        if not os.path.isdir(d) or dec == "ondemand":
             continue
         for f in sorted(os.listdir(d)):
             if not f.endswith('.json'):

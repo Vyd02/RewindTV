@@ -42,8 +42,8 @@ PROFILES = {
     'classic': {480: 900, 576: 1100, 720: 1800, 1080: 3000},
     'clean':   {480: 1800, 576: 2000, 720: 2600, 1080: 4000},
 }
-DECADE_PROFILE = {'50s': 'classic', '60s': 'classic', '70s': 'classic', '80s': 'clean', '90s': 'clean', '00s': 'clean'}
-DEEP_ROWS = {'clean': 900, 'classic': SEARCH_ROWS}
+DECADE_PROFILE = {'all': 'classic', '50s': 'classic', '60s': 'classic', '70s': 'classic', '80s': 'clean', '90s': 'clean', '00s': 'clean'}
+DEEP_ROWS = {'clean': 900, 'classic': SEARCH_ROWS, 'all': 1700}
 VIDEO_EXT = ('.mp4', '.m4v', '.mkv')
 UA = {'User-Agent': 'RewindTV-curator/1.0 (github.com/Vyd02/RewindTV)'}
 
@@ -136,7 +136,14 @@ def main():
     allcache = json.load(open(CACHE)) if os.path.exists(CACHE) else {}
     if allcache and 'classic' not in allcache and 'clean' not in allcache:
         allcache = {'classic': allcache}      # older single-profile cache
-    LU = lineups()
+    LU0 = lineups()
+    LU, seen_keys = {}, set()
+    for dec, chans in LU0.items():
+        for ch in chans:
+            if ch['key'] in seen_keys:
+                continue
+            seen_keys.add(ch['key'])
+            LU.setdefault(ch['key'].split(':')[0], []).append(ch)
     report = []
     for dec, chans in LU.items():
         if only and dec not in only:
@@ -151,7 +158,7 @@ def main():
                 continue
             url = 'https://archive.org/advancedsearch.php?' + urllib.parse.urlencode([
                 ('q', ch['q']), ('fl[]', 'identifier'), ('fl[]', 'title'),
-                ('rows', DEEP_ROWS[prof]), ('sort[]', 'downloads desc'), ('output', 'json')])
+                ('rows', DEEP_ROWS['all'] if dec == 'all' else DEEP_ROWS[prof]), ('sort[]', 'downloads desc'), ('output', 'json')])
             try:
                 docs = get(url)['response']['docs']
             except Exception as e:
@@ -170,7 +177,7 @@ def main():
             kept = []
             pos = 0
             with cf.ThreadPoolExecutor(16) as ex:
-                while pos < len(docs) and len(kept) < KEEP:
+                while pos < len(docs) and len(kept) < (440 if dec == 'all' else KEEP):
                     batch = docs[pos:pos + 48]
                     pos += 48
                     todo = [d['identifier'] for d in batch if d['identifier'] not in cache]
@@ -181,7 +188,7 @@ def main():
                         eps = cache.get(d['identifier'])
                         if eps:
                             kept.append({'id': d['identifier'], 't': re.sub(r'\s+', ' ', str(d.get('title') or d['identifier']).replace('_', ' ')).strip()[:140], 'e': eps})
-            kept = english.keep_english(kept, langcache)[:KEEP]
+            kept = english.keep_english(kept, langcache)[:(400 if dec == 'all' else KEEP)]
             english.save_cache(langcache)
             json.dump({'call': ch['call'], 'q': ch['q'], 'updated': time.strftime('%Y-%m-%d'), 'items': kept},
                       open(os.path.join(OUT, dec, theme + '.json'), 'w'), separators=(',', ':'))
