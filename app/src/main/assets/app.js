@@ -129,6 +129,25 @@ function curated(ch) {
   });
 }
 function loadList(ch) {
+  if (ch.special) return Promise.reject(new Error('special'));
+  const tag = variantTag(ch, Date.now());
+  if (!tag) return loadBase(ch);
+  const k = ch.key + '|' + tag;
+  if (S.lists[k]) return S.lists[k];
+  const [dec] = ch.key.split(':');
+  const parts = [tag.includes('sat') ? curated({ key: dec + ':satam' }).catch(() => loadBase(ch)) : loadBase(ch)];
+  const sn = tag.includes('halloween') ? 'halloween' : tag.includes('christmas') ? 'christmas' : '';
+  if (sn) parts.push(curated({ key: dec + ':' + sn }).catch(() => []));
+  return (S.lists[k] = Promise.all(parts).then(([a, b]) => {
+    const seen = new Set(), docs = [];
+    // Holiday specials mixed in: about one show in four.
+    const extra = (b || []).slice(0, Math.max(5, Math.ceil(a.length / 3)));
+    for (const x of a.concat(extra)) if (!seen.has(x.id)) { seen.add(x.id); docs.push(x); }
+    docs.sort((x, y) => x.id < y.id ? -1 : 1);
+    return arrange({ key: k }, docs);
+  }).catch(e => { delete S.lists[k]; return loadBase(ch); }));
+}
+function loadBase(ch) {
   if (S.lists[ch.key]) return S.lists[ch.key];
   return (S.lists[ch.key] = curated(ch).catch(() => { delete S.lists[ch.key]; return searchList(ch); }).then(l => (S.lists[ch.key] = Promise.resolve(l), l)));
 }
@@ -214,7 +233,7 @@ function armBlock(sch) {
   const token = S.token;
   S.blockTimer = setTimeout(() => {
     const p = S.playing;
-    if (p && token === S.token) { staticOn(); followClock(p, 0).then(() => showBanner()); }
+    if (p && token === S.token && !S.inBreak) { staticOn(); nextNatural(p); }
   }, Math.max(5000, sch.end - Date.now() + 500));
 }
 
@@ -287,6 +306,7 @@ function undoBlock() {
 
 /* ---------- skip / start over ---------- */
 function skipShow() {
+  if (S.inBreak) { toast('⏭ Skipping the break', 1500); return endBreak(); }
   const p = S.playing; if (!p) return;
   toast('⏭ Skipping to the next show', 1800);
   skip();
@@ -369,6 +389,8 @@ async function tune(idx, opts = {}) {
 
   const token = ++S.token;
   S.vod = null; S.offClock = false;
+  cancelBreak(); stopSpecial(); tone(false); clearTimeout(S.signT);
+  if (S.booted) sfxClunk(); S.booted = true;
   store.set('rt:ch', { dec: ch.dec, num: ch.num, key: ch.key });
   store.set('rt:dec', ch.dec);
   setLastCh(ch.dec, ch.key);
@@ -378,6 +400,8 @@ async function tune(idx, opts = {}) {
   banner(ch, 'Tuning…', '', 0);
   vid.pause(); vid.removeAttribute('src'); vid.load();
   bars(false);
+  if (ch.special) return startSpecial(ch);
+  if (signOffNow(ch)) return signOff(ch);
   try {
     const list = await loadList(ch);
     if (token !== S.token) return;
@@ -427,6 +451,7 @@ async function play(ch, list, i, offsetMs, token, tries, slot, k = 0) {
 
 // Best copy won't play or keeps stalling: try the next-best copy of the same video, then move on.
 function downgrade() {
+  if (S.special || S.inBreak) return;
   const p = S.playing; if (!p) return;
   if (p.k + 1 < p.f.cands.length) {
     const ms = Math.round((vid.currentTime || p.startOff) * 1000);
@@ -445,7 +470,7 @@ function skip() {
   if (n.i === p.i && n.slot === p.slot) n = entryAt(p.ch, p.list, here + 2);
   S.offClock = true;              // after a skip, keep going in order until you change channels
   armBlock(n);
-  play(p.ch, p.list, n.i, n.from * 1000, p.token, p.tries + 1, n.slot);
+  play(p.ch, p.list, n.i, n.from * 1000, p.token, p.tries + 1, n.slot).then(() => showIdent(p.ch));
 }
 
 vid.addEventListener('loadeddata', () => { if (!vid.paused || vid.readyState >= 2) staticOff(); });
@@ -458,8 +483,13 @@ function prefetch() {
     loadList(ch).then(list => videos(scheduleAt(ch, list, Date.now()).item)).catch(() => {});
   });
 }
-vid.addEventListener('waiting', () => { clearTimeout(S.stallTimer); S.stallTimer = setTimeout(() => { if (vid.readyState < 3 && !S.paused) downgrade(); }, STALL_MS); });
-vid.addEventListener('ended', () => { const p = S.playing; if (!p) return; staticOn(); if (S.vod) return vodNext(); followClock(p, 0).then(() => showBanner()); });
+vid.addEventListener('waiting', () => { if (S.special || S.inBreak) return; clearTimeout(S.stallTimer); S.stallTimer = setTimeout(() => { if (vid.readyState < 3 && !S.paused) downgrade(); }, STALL_MS); });
+vid.addEventListener('ended', () => {
+  if (S.special) return nextTrack();
+  if (S.inBreak) return endBreak();
+  const p = S.playing; if (!p) return; staticOn(); if (S.vod) return vodNext();
+  nextNatural(p);
+});
 // Go to whatever the channel's clock says is on now. If the clock still says the tape that
 // just ended (its real length was shorter than listed), go to the next show from its top.
 function followClock(p, tries) {
@@ -474,7 +504,11 @@ function followClock(p, tries) {
   armBlock(sch);
   return play(p.ch, p.list, sch.i, now - sch.start, p.token, tries, sch.slot);
 }
-vid.addEventListener('error', () => { if (vid.getAttribute('src')) downgrade(); });
+vid.addEventListener('error', () => {
+  if (S.special) return setTimeout(nextTrack, 1500);
+  if (S.inBreak) return endBreak();
+  if (vid.getAttribute('src')) downgrade();
+});
 
 function offAir(ch) {
   staticOff(); bars(true, 'OFF THE AIR');
@@ -554,14 +588,14 @@ function showBanner() {
 function toast(text, ms = 2000) { const t = $('toast'); t.textContent = text; t.classList.remove('hidden'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.add('hidden'), ms); }
 setInterval(() => {
   $('bnClock').textContent = clock(); $('gClock').textContent = clock();
-  const p = S.playing; if (p && p.f.len && vid.currentTime) $('bnFill').style.width = (vid.currentTime / p.f.len * 100) + '%';
+  const p = S.playing; if (p && p.f.len && vid.currentTime && !S.inBreak && !S.special) $('bnFill').style.width = (vid.currentTime / p.f.len * 100) + '%';
 }, 1000);
 
 /* ---------- guide ---------- */
 const ROW_H = 96;
 const G = { dec: DEC, list: CHANNELS };
-const TABS = DECADES.map(d => d.id).concat(['MOVIES', 'SHOWS']);
-const isVod = t => t === 'MOVIES' || t === 'SHOWS';
+const TABS = DECADES.map(d => d.id).concat(['MOVIES', 'SHOWS', 'TAPES']);
+const isVod = t => t === 'MOVIES' || t === 'SHOWS' || t === 'TAPES';
 function drawTabs() {
   $('gTabs').innerHTML = TABS.map(t =>
     `<div class="tab${t === G.dec ? ' on' : ''}${t === DEC ? ' live' : ''}${isVod(t) ? ' vod' : ''}">${t}</div>`).join('') + '<div id="gTabSel"></div>';
@@ -580,6 +614,12 @@ function buildGuide() {
     `<div class="gt now" id="gn${k}">…</div><div class="gt" id="gx${k}">…</div></div>`).join('');
   const dec = G.dec;
   G.list.forEach((ch, k) => {
+    if (ch.special) {
+      $('gn' + k).textContent = ch.special === 'prevue' ? 'Prevue Guide · scrolling listings' : 'Local on the 8s · your forecast';
+      $('gx' + k).textContent = ch.special === 'prevue' ? 'with the classic guide music' : 'with smooth jazz';
+      return;
+    }
+    if (signOffNow(ch)) { $('gn' + k).textContent = 'Signed off for the night'; $('gx' + k).innerHTML = '<span class="tag">5:30a</span>Back on the air'; return; }
     loadList(ch).then(list => {
       if (G.dec !== dec) return;
       const a = scheduleAt(ch, list, now), b = nextAfter(ch, list, now);
@@ -616,6 +656,7 @@ const GENRE = { movies: 'FLIX', comedyfilm: 'LOL', noir: 'NOIR', western: 'OATER
 function hm(sec) { const h = Math.floor(sec / 3600), m = Math.round(sec % 3600 / 60); return h ? `${h}h ${pad(m)}m` : `${m} min`; }
 function buildVod() {
   const kind = G.dec;
+  if (kind === 'TAPES') return buildTapes();
   drawTabs();
   $('gNowHead').textContent = kind === 'MOVIES' ? 'FULL MOVIES · START TO FINISH' : 'FULL EPISODES';
   $('gNextHead').textContent = kind === 'MOVIES' ? 'LENGTH' : 'EPISODES';
@@ -636,8 +677,20 @@ function buildVod() {
   }).catch(() => { if (G.dec === kind) $('gRows').innerHTML = '<div class="gr"><div class="gt now">Couldn\u2019t load On Demand. Check the internet.</div></div>'; });
   $('gRows').classList.remove('swap'); void $('gRows').offsetWidth; $('gRows').classList.add('swap');
 }
+function buildTapes() {
+  drawTabs();
+  $('gNowHead').textContent = 'MY TAPES · OK play · ⏩ erase';
+  $('gNextHead').textContent = 'TAPED FROM';
+  const t = tapes(); G.list = t.length ? t.map(x => Object.assign({}, x, { title: x.title })) : [{ loading: true }];
+  const esc = s => String(s).replace(/</g, '&lt;');
+  $('gRows').innerHTML = t.length
+    ? t.map(x => `<div class="gr" style="--ch:#ff5c8a"><div class="gc"><b>📼</b>${x.dec}</div><div class="gt now">${esc(x.title)}</div><div class="gt">${esc(x.ch)} · ${new Date(x.at).toLocaleDateString()}</div></div>`).join('')
+    : '<div class="gr"><div class="gt now">No tapes yet. Double-tap ⏯ on any show to tape it.</div></div>';
+  moveGuide(0);
+}
 function pickVod(k) {
   const it = G.list[k]; if (!it || it.loading) return;
+  if (G.dec === 'TAPES') return playVod({ id: it.id, title: it.title, dec: it.dec, eps: it.eps || undefined }, it.slot || 0, 'TAPES');
   VODSEL[G.dec] = k;
   if (G.dec === 'MOVIES') return playVod(it, 0, 'MOVIES');
   const onEp = S.vod && S.vod.item.id === it.id ? S.vod.ep : 0;
@@ -668,6 +721,7 @@ async function playVod(item, ep, kind) {
   const ch = { num: '▶', call: kind === 'MOVIES' ? 'MOVIE' : 'SHOW', name: 'On Demand', color: '#ffe066', key: 'vod:' + item.id, dec: item.dec };
   const token = ++S.token;
   clearTimeout(S.blockTimer); S.cur = null; S.paused = false; vcr('');
+  cancelBreak(); stopSpecial(); tone(false);
   staticOn(); osd(ch);
   vid.pause(); vid.removeAttribute('src'); vid.load();
   const resume = loadVodProgress(item, ep);
@@ -756,6 +810,7 @@ function remote(key) {
       case 'Left': return switchTab(-1);
       case 'Right': return switchTab(1);
       case 'PlayPause': return openBlocked();
+      case 'FastForward': if (G.dec === 'TAPES') return deleteTape(S.gSel); return;
       case 'Back': case 'Guide': return closeGuide();
     }
     return;
@@ -766,10 +821,7 @@ function remote(key) {
     case 'OK': case 'Guide': return openGuide();
     case 'Right': return showBanner();
     case 'Left': case 'Flashback': toast('↩ FLASHBACK', 1200); return tune(S.last);
-    case 'PlayPause':
-      if (vid.paused) { vid.play().catch(() => {}); S.paused = false; vcr('▶ PLAY'); setTimeout(() => { if (!S.paused) vcr(''); }, 1500); }
-      else { vid.pause(); S.paused = true; vcr('❚❚ PAUSE', true); }
-      return;
+    case 'PlayPause': return tap('pp', togglePause, tapeIt);
     case 'Rewind': return tap('rw', () => seekBy(-15), startOver);
     case 'FastForward': return tap('ff', () => seekBy(30), skipShow);
     case 'Block': return seekBy(30);          // holding ⏩ on the remote
@@ -791,6 +843,265 @@ function digit(d) {
     if (k >= 0) { closeGuide(); tune(k); } else { toast('No channel there'); $('osd').classList.add('hidden'); }
   }, 1300);
 }
+/* =====================================================================
+   OLD-SCHOOL TV: commercial breaks, station IDs, sounds, Tape it,
+   Saturday mornings, overnight sign-off, holiday specials,
+   the Prevue guide channel and Local on the 8s weather.
+   ===================================================================== */
+
+/* ---------- sounds (synthesized, no files) ---------- */
+function ac() { hiss(false); return audio && audio.ac; }
+function sfxOn() {
+  try {
+    const a = ac(); if (!a) return; const t = a.currentTime;
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(60, t); o.frequency.exponentialRampToValueAtTime(15700, t + 0.9);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.05, t + 0.15); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.4);
+    o.connect(g).connect(a.destination); o.start(t); o.stop(t + 1.5);
+    const h = a.createOscillator(), hg = a.createGain();            // low power-on thump
+    h.type = 'triangle'; h.frequency.value = 55; hg.gain.setValueAtTime(0.18, t); hg.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+    h.connect(hg).connect(a.destination); h.start(t); h.stop(t + 0.6);
+  } catch (e) {}
+}
+function sfxClunk() {
+  try {
+    const a = ac(); if (!a) return; const t = a.currentTime;
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = 'square'; o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(40, t + 0.08);
+    g.gain.setValueAtTime(0.12, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+    o.connect(g).connect(a.destination); o.start(t); o.stop(t + 0.15);
+  } catch (e) {}
+}
+function sfxOff() {
+  try {
+    const a = ac(); if (!a) return; const t = a.currentTime;
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = 'sawtooth'; o.frequency.setValueAtTime(900, t); o.frequency.exponentialRampToValueAtTime(30, t + 0.45);
+    g.gain.setValueAtTime(0.06, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+    o.connect(g).connect(a.destination); o.start(t); o.stop(t + 0.55);
+  } catch (e) {}
+}
+let toneNode = null;
+function tone(on) {
+  try {
+    if (toneNode) { toneNode.stop(); toneNode = null; }
+    if (!on) return;
+    const a = ac(); if (!a) return;
+    const o = a.createOscillator(), g = a.createGain();
+    o.frequency.value = 1000; g.gain.value = 0.02; o.connect(g).connect(a.destination); o.start();
+    o.stop(a.currentTime + 20); toneNode = o;
+  } catch (e) {}
+}
+
+/* ---------- station ID before each new show ---------- */
+let identT = 0;
+function showIdent(ch) {
+  if (!ch || ch.special || S.vod) return;
+  const el = $('ident');
+  el.style.setProperty('--ch', ch.color);
+  $('idNum').textContent = ch.num; $('idCall').textContent = ch.call; $('idName').textContent = ch.dec + ' · ' + ch.name;
+  el.classList.remove('go'); void el.offsetWidth; el.classList.add('go');
+  clearTimeout(identT); identT = setTimeout(() => el.classList.remove('go'), 3200);
+}
+
+/* ---------- commercial breaks between shows ---------- */
+const NO_BREAKS = new Set(['ads', 'kidbreaks', 'toyads', 'gameads', 'infomercial', 'psa', 'trailers', 'music', 'mtv', 'vh1',
+  'weather', 'vhs', 'skin', 'xxx', 'latenight']);
+const BREAKS = {};
+function breakList(dec) {
+  return BREAKS[dec] || (BREAKS[dec] = curated({ key: dec + ':ads' }).catch(e => { delete BREAKS[dec]; throw e; }));
+}
+function wantsBreak(ch) { return ch && !ch.special && !S.vod && !NO_BREAKS.has(ch.key.split(':')[1]) && Math.random() < 0.85; }
+async function maybeBreak(ch, then) {
+  if (!wantsBreak(ch)) return then();
+  let list;
+  try { list = await breakList(ch.dec); } catch (e) { return then(); }
+  const pool = [];
+  list.forEach(it => (it.eps || []).forEach(e => { if ((e.len || 0) > 150) pool.push({ it, e }); }));
+  if (!pool.length) return then();
+  const { it, e } = pool[Math.floor(Math.random() * pool.length)];
+  const dur = 60 + Math.floor(Math.random() * 90);                // 1 to 2.5 minutes of real commercials
+  const off = Math.floor(Math.random() * Math.max(1, e.len - dur - 30));
+  const token = S.token;
+  S.inBreak = { token, then };
+  clearTimeout(S.stallTimer);
+  vid.startAt = off;
+  vid.src = 'https://archive.org/download/' + encodeURIComponent(it.id) + '/' + e.n.split('/').map(encodeURIComponent).join('/');
+  vid.onloadedmetadata = () => { try { vid.currentTime = off; } catch (x) {} };
+  vid.play().catch(() => {});
+  $('banner').classList.add('hidden');
+  toast('📺 We’ll be right back', 2500);
+  clearTimeout(S.breakTimer);
+  S.breakTimer = setTimeout(endBreak, dur * 1000);
+  S.breakStall = setTimeout(() => { if (S.inBreak && vid.readyState < 3) endBreak(); }, 12000);
+}
+function endBreak() {
+  const b = S.inBreak; if (!b) return;
+  S.inBreak = null; clearTimeout(S.breakTimer); clearTimeout(S.breakStall);
+  if (b.token === S.token) { staticOn(); b.then(); }
+}
+function cancelBreak() { S.inBreak = null; clearTimeout(S.breakTimer); clearTimeout(S.breakStall); }
+// A show ended (or its block ran out): break, then whatever's next, with a station ID.
+function nextNatural(p) {
+  maybeBreak(p.ch, () => {
+    if (signOffNow(p.ch)) return signOff(p.ch);
+    followClock(p, 0).then(() => { showBanner(); showIdent(p.ch); });
+  });
+}
+
+/* ---------- Saturday mornings, overnight sign-off, holidays ---------- */
+const KID_THEMES = new Set(['cartoons', 'cn', 'nick', 'foxkids', 'kidswb', 'disney', 'abcsat', 'toonami', 'boomerang', 'jetix', 'nickjr', 'pbskids']);
+const SIGNOFF_THEMES = new Set(['tv', 'sitcom', 'gameshow', 'news', 'nickatnite', 'pbskids', 'nickjr', 'psa', 'school']);
+const SEASON_THEMES = new Set(['cartoons', 'satam', 'tv', 'sitcom', 'cn', 'nick', 'disney', 'foxkids', 'kidswb', 'abcsat', 'boomerang',
+  'nickjr', 'pbskids', 'movies', 'horror', 'comedyfilm', 'toonami', 'nickatnite', 'gameshow']);
+function avail(dec, theme) { return ((window.AVAIL && window.AVAIL[dec]) || {})[theme] || 0; }
+function season(t) {
+  const d = new Date(t), m = d.getMonth(), day = d.getDate();
+  if (m === 9) return 'halloween';
+  if ((m === 10 && day >= 25) || m === 11) return 'christmas';
+  return '';
+}
+function saturdayMorning(t) { const d = new Date(t); return d.getDay() === 6 && d.getHours() >= 6 && d.getHours() < 12; }
+function variantTag(ch, t) {
+  if (!ch || ch.special || ch.key.startsWith('vod:') || ch.key.startsWith('all:')) return '';
+  const [dec, theme] = ch.key.split(':'); const tags = [];
+  if (saturdayMorning(t) && KID_THEMES.has(theme) && avail(dec, 'satam') >= 10) tags.push('sat');
+  const sn = season(t);
+  if (sn && SEASON_THEMES.has(theme) && avail(dec, sn) >= 5 && !(sn === 'halloween' && KID_THEMES.has(theme) && theme === 'nickjr')) tags.push(sn);
+  return tags.join('+');
+}
+function signOffNow(ch, t = Date.now()) {
+  if (!ch || ch.special) return false;
+  const d = new Date(t), m = d.getHours() * 60 + d.getMinutes();
+  return SIGNOFF_THEMES.has(ch.key.split(':')[1]) && m >= 180 && m < 330;        // 3:00 to 5:30 AM
+}
+function signOff(ch) {
+  cancelBreak(); clearTimeout(S.blockTimer); clearTimeout(S.stallTimer);
+  vid.pause(); vid.removeAttribute('src'); vid.load();
+  staticOff(); bars(true, 'SIGN OFF · BACK AT 5:30 AM');
+  banner(ch, 'This station has signed off for the night', 'Programming returns at 5:30 AM · try another channel', 0);
+  tone(true);
+  const back = new Date(); back.setHours(5, 30, 5, 0);
+  const token = S.token;
+  clearTimeout(S.signT); S.signT = setTimeout(() => { if (token === S.token) tune(S.idx, { force: true }); }, Math.max(5000, back - Date.now()));
+}
+
+/* ---------- Tape it (double-tap ⏯) and MY TAPES ---------- */
+function tapes() { return store.get('rt:tapes') || []; }
+function tapeIt() {
+  const p = S.playing; if (!p || S.special || S.inBreak) return;
+  const item = p.list[p.i % p.list.length];
+  const ep = item.eps && item.eps[p.fi] ? [item.eps[p.fi]] : null;
+  const t = tapes().filter(x => !(x.id === item.id && x.slot === p.fi));
+  t.unshift({ id: item.id, title: p.title || item.title, dec: p.ch.dec, eps: ep, slot: ep ? 0 : p.fi, ch: p.ch.call, at: Date.now() });
+  store.set('rt:tapes', t.slice(0, 100));
+  vcr('● REC'); setTimeout(() => vcr(S.paused ? '❚❚ PAUSE' : ''), 1800);
+  toast('📼 Taped! Find it in the guide under MY TAPES', 3000);
+}
+function deleteTape(k) {
+  const t = tapes(); if (!t[k]) return;
+  const gone = t.splice(k, 1)[0]; store.set('rt:tapes', t);
+  toast('🗑 Erased “' + gone.title.slice(0, 40) + '”', 2000);
+  buildGuide(); moveGuide(Math.min(k, Math.max(0, t.length - 1)));
+}
+
+/* ---------- special channels: Prevue guide + Local on the 8s ---------- */
+const MUSIC = {
+  prevue: ['prevueguidemusic1991', 'prevue-music-for-cer-two', 'cer-two-interstitial-music-prevue'],
+  local: ['weatherscanlocalmusic', 'Weatherscanmusic-bytheweatherchannel', 'the-weather-channel-presents-the-best-of-smooth-jazz-full-album'],
+};
+const TRACKS = {};
+async function nextTrack() {
+  const kind = S.special; if (!kind) return;
+  const ids = MUSIC[kind]; const id = ids[Math.floor(Math.random() * ids.length)];
+  try {
+    if (!TRACKS[id]) TRACKS[id] = (await getJSON('https://archive.org/metadata/' + id)).files.filter(f => /\.mp3$/i.test(f.name)).map(f => f.name);
+    const list = TRACKS[id]; if (!list.length) throw 0;
+    const n = list[Math.floor(Math.random() * list.length)];
+    if (S.special !== kind) return;
+    vid.startAt = 0; vid.src = 'https://archive.org/download/' + id + '/' + n.split('/').map(encodeURIComponent).join('/');
+    vid.onloadedmetadata = null; vid.play().catch(() => {});
+  } catch (e) { setTimeout(() => { if (S.special === kind) nextTrack(); }, 4000); }
+}
+function stopSpecial() {
+  if (!S.special) return;
+  S.special = null; clearInterval(S.specialT); clearInterval(S.wxPageT);
+  $('prevue').classList.add('hidden'); $('wx').classList.add('hidden');
+  document.body.classList.remove('special');
+}
+function startSpecial(ch) {
+  clearTimeout(S.stallTimer); clearTimeout(S.blockTimer);
+  S.special = ch.special; document.body.classList.add('special');
+  vid.pause(); vid.removeAttribute('src'); vid.load();
+  staticOff(); bars(false);
+  if (ch.special === 'prevue') startPrevue(ch); else startLocal(ch);
+  nextTrack();
+}
+function startPrevue(ch) {
+  banner(ch, 'Prevue Guide', 'Scrolling listings for every channel', 0);
+  $('pvDec').textContent = ch.dec;
+  const chans = CHANNELS.filter(c => !c.special && !c.key.startsWith('all:') && !ADULT_KEYS.has(c.key.split(':')[1]));
+  const now = Date.now(), esc = t => String(t).replace(/</g, '&lt;');
+  const rows = chans.map((c, k) => `<div class="pr" style="--ch:${c.color}"><b>${c.num}</b><i>${c.call}</i><span id="pv${k}">…</span><em id="pn${k}"></em></div>`).join('');
+  $('pvRows').innerHTML = rows + rows;                                 // twice, for a seamless loop
+  $('pvRows').style.animationDuration = (chans.length * 3.2) + 's';
+  const promos = [];
+  chans.forEach((c, k) => loadList(c).then(list => {
+    const a = scheduleAt(c, list, now), b = nextAfter(c, list, now);
+    document.querySelectorAll('#pv' + k).forEach(el => el.textContent = a.item.title);
+    document.querySelectorAll('#pn' + k).forEach(el => el.textContent = clock(new Date(b.airs)) + ' ' + b.item.title);
+    promos.push({ c, title: b.item.title, at: b.airs });
+  }).catch(() => {}));
+  let pi = 0;
+  const promo = () => {
+    if (!promos.length) return;
+    const p = promos[pi++ % promos.length];
+    const box = $('pvPromo'); box.style.setProperty('--ch', p.c.color);
+    $('pvWhen').textContent = 'COMING UP AT ' + clock(new Date(p.at)).toUpperCase();
+    $('pvTitle').textContent = p.title; $('pvCh').textContent = 'CH ' + p.c.num + ' · ' + p.c.call;
+    box.classList.remove('flip'); void box.offsetWidth; box.classList.add('flip');
+  };
+  setTimeout(promo, 2500); S.specialT = setInterval(promo, 7000);
+  $('prevue').classList.remove('hidden');
+}
+const WMO = { 0: 'Sunny', 1: 'Mostly Sunny', 2: 'Partly Cloudy', 3: 'Cloudy', 45: 'Fog', 48: 'Fog', 51: 'Drizzle', 53: 'Drizzle', 55: 'Drizzle',
+  61: 'Light Rain', 63: 'Rain', 65: 'Heavy Rain', 66: 'Freezing Rain', 67: 'Freezing Rain', 71: 'Light Snow', 73: 'Snow', 75: 'Heavy Snow', 77: 'Snow',
+  80: 'Showers', 81: 'Showers', 82: 'Heavy Showers', 85: 'Snow Showers', 86: 'Snow Showers', 95: 'T-Storms', 96: 'T-Storms', 99: 'T-Storms' };
+async function startLocal(ch) {
+  banner(ch, 'Local on the 8s', 'Your local forecast', 0);
+  $('wx').classList.remove('hidden');
+  $('wxCity').textContent = 'FINDING YOUR AREA…'; $('wxBody').innerHTML = '';
+  try {
+    const loc = store.get('rt:loc') && Date.now() - store.get('rt:loc').at < 864e5 ? store.get('rt:loc') : await getJSON('https://ipwho.is/');
+    if (loc && loc.latitude) store.set('rt:loc', Object.assign({}, loc, { at: loc.at || Date.now() }));
+    const f = await getJSON('https://api.open-meteo.com/v1/forecast?latitude=' + loc.latitude + '&longitude=' + loc.longitude +
+      '&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,relative_humidity_2m,pressure_msl' +
+      '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=6');
+    if (S.special !== 'local') return;
+    const c = f.current, d = f.daily, dir = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round((c.wind_direction_10m || 0) / 45) % 8];
+    const day = k => new Date(d.time[k] + 'T12:00').toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
+    const pages = [
+      ['CURRENT CONDITIONS', `<div class="wxNow"><div class="wxTemp">${Math.round(c.temperature_2m)}°</div><div class="wxCond">${WMO[c.weather_code] || ''}</div></div>
+        <div class="wxList"><div>Humidity <b>${c.relative_humidity_2m}%</b></div><div>Wind <b>${dir} ${Math.round(c.wind_speed_10m)} mph</b></div>
+        <div>Feels like <b>${Math.round(c.apparent_temperature)}°</b></div><div>Pressure <b>${(c.pressure_msl * 0.02953).toFixed(2)} in</b></div></div>`],
+      ['LOCAL FORECAST', `<div class="wxText">TODAY: ${WMO[d.weather_code[0]] || ''}. High ${Math.round(d.temperature_2m_max[0])}°.
+        Chance of rain ${d.precipitation_probability_max[0] || 0}%.<br><br>TONIGHT: Low ${Math.round(d.temperature_2m_min[0])}°.<br><br>
+        TOMORROW: ${WMO[d.weather_code[1]] || ''}. High ${Math.round(d.temperature_2m_max[1])}°, low ${Math.round(d.temperature_2m_min[1])}°.</div>`],
+      ['EXTENDED FORECAST', `<div class="wxDays">${[1, 2, 3, 4, 5].map(k => `<div class="wxDay"><b>${day(k)}</b><span>${WMO[d.weather_code[k]] || ''}</span>
+        <em>${Math.round(d.temperature_2m_max[k])}°</em><i>${Math.round(d.temperature_2m_min[k])}°</i></div>`).join('')}</div>`],
+    ];
+    $('wxCity').textContent = String(loc.city || 'YOUR AREA').toUpperCase();
+    let k = 0;
+    const show = () => {
+      const [h, body] = pages[k++ % pages.length];
+      $('wxHead').textContent = h; $('wxBody').innerHTML = body;
+      $('wxBody').classList.remove('in'); void $('wxBody').offsetWidth; $('wxBody').classList.add('in');
+    };
+    show(); S.wxPageT = setInterval(show, 9000);
+  } catch (e) { $('wxCity').textContent = 'WEATHER DATA UNAVAILABLE'; }
+}
+setInterval(() => { $('wxClock').textContent = clock(); }, 1000);
+
 /* ---------- PIN entry (number keys, or ▲▼ + OK on remotes without numbers) ---------- */
 function showPin() {
   const shown = '•'.repeat(S.pinEntry.length) + (S.pinEntry.length < 4 ? String(S.pinDigit || 0) : '');
@@ -838,7 +1149,12 @@ function pinPush(d) {
   }
 }
 
+function togglePause() {
+  if (vid.paused) { vid.play().catch(() => {}); S.paused = false; vcr('▶ PLAY'); setTimeout(() => { if (!S.paused) vcr(''); }, 1500); }
+  else { vid.pause(); S.paused = true; vcr('❚❚ PAUSE', true); }
+}
 function powerOff() {
+  sfxOff(); stopSpecial(); tone(false);
   closeGuide(); hiss(false); vid.pause();
   screen.classList.remove('on'); screen.classList.add('off');
   setTimeout(() => { if (window.Android && Android.exit) Android.exit(); }, 650);
@@ -856,7 +1172,7 @@ addEventListener('keydown', e => {
 function sleep() { S.slept = true; vid.pause(); hiss(false); }
 function wake() { if (S.slept) { S.slept = false; tune(S.idx); } }
 
-window.RT = { remote, _got, _v, sleep, wake, toast: t => toast(t, 5000) };
+window.RT = { remote, _got, _v, sleep, wake, toast: t => toast(t, 5000), _end: () => S.playing && nextNatural(S.playing) };
 if (window.Android && Android.alive) Android.alive();
 
 function boot() {
@@ -869,6 +1185,7 @@ function boot() {
   if (start < 0) start = 0;
   S.idx = start; S.last = start;
   setTimeout(() => screen.classList.remove('on'), 1100);
+  sfxOn();
   tune(start);
 }
 // Which channels have enough clean tapes (from the curator); thin ones are left off the dial.

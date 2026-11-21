@@ -34,6 +34,9 @@ const THEMES = {
   comedycentral: { call: 'CMDY', name: 'Comedy Central', color: '#ffc400', q: '(title:"comedy central" OR subject:"comedy central")' },
   scifi:        { call: 'SCIFI', name: 'Sci-Fi Channel', color: '#7c4dff', q: '(title:"sci-fi channel" OR subject:"sci-fi channel" OR title:"scifi channel")' },
   upallnight:   { call: 'UPALL', name: 'Up All Night', color: '#651fff', q: '(title:"up all night" OR subject:"up all night" OR title:monstervision)' },
+  // ---- seasonal (mixed into regular channels in season, not on the dial) ----
+  halloween:   { call: 'BOO',   name: 'Halloween Specials',  color: '#ff6d00', q: '(subject:halloween OR title:halloween)' },
+  christmas:   { call: 'XMAS',  name: 'Christmas Specials',  color: '#00c853', q: '(subject:christmas OR title:christmas OR subject:"holiday special" OR title:"holiday special")' },
   // ---- channel types ----
   cartoons:    { call: 'TOON',  name: 'Cartoons',            color: '#ff3d7f', q: '(subject:cartoon OR subject:cartoons OR subject:animation OR collection:classic_cartoons)' },
   satam:       { call: 'SAT',   name: 'Saturday Morning',    color: '#ffb300', q: 'subject:"saturday morning"' },
@@ -75,6 +78,7 @@ const DECADES = [
   { id: '80s', y: 1980 }, { id: '90s', y: 1990 }, { id: '00s', y: 2000 },
 ];
 const DEFAULT_DECADE = '90s';
+const SEASONAL = ['halloween', 'christmas'];
 
 const LINEUPS = {
   "50s": [
@@ -285,10 +289,17 @@ function lineup(decId) {
   let keys = avail ? LINEUPS[d.id].filter(k => ((THEMES[k].allYears ? allAvail[k] : avail[k]) || 0) >= 10) : LINEUPS[d.id];
   // A decade still being checked: keep the full dial (unchecked channels use live search).
   if (keys.length < 10) keys = LINEUPS[d.id].filter(k => THEMES[k].allYears || !avail || !(k in avail) || avail[k] >= 10);
-  return keys.map((key, i) => {
+  const chans = keys.map(key => {
     const t = THEMES[key];
     // allYears channels (the hardcore channel) pull from every decade and share one schedule on every tab.
-    return { num: i + 1, key: (t.allYears ? 'all' : d.id) + ':' + key, dec: d.id, call: t.call, name: t.name, color: t.color,
+    return { key: (t.allYears ? 'all' : d.id) + ':' + key, dec: d.id, call: t.call, name: t.name, color: t.color, adult: !!t.adult,
              q: '(' + t.q + ')' + (t.allYears ? '' : decadeClause(d.y)) + (t.adult ? NO_MINORS + NO_GAY : '') };
   });
+  // Two special channels on every tab, just before the late-night adult ones.
+  const at = chans.findIndex(c => c.adult);
+  chans.splice(at < 0 ? chans.length : at, 0,
+    { key: d.id + ':prevue', dec: d.id, call: 'GUIDE', name: 'Prevue Guide', color: '#7a5cff', special: 'prevue', q: '' },
+    { key: d.id + ':local', dec: d.id, call: 'LOCAL', name: 'Local on the 8s', color: '#40c4ff', special: 'local', q: '' });
+  chans.forEach((c, i) => { c.num = i + 1; });
+  return chans;
 }

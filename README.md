@@ -50,3 +50,15 @@ Edit `app/src/main/assets/channels.js`. Each channel is just an Internet Archive
 - Videos come from the Internet Archive. What's on each channel depends on what people have uploaded there.
 - Adult channels filter out gay content and anything that looks underage (user preference).
 - The signing key (`app/rewindtv.keystore`) is committed on purpose so every build can update the last one.
+
+## Old-school TV features
+- **Commercial breaks** between shows: 1–2½ minutes of real commercials from the same decade (double-tap ⏩ skips the break).
+- **Station IDs** pop up when a new show starts.
+- **Sounds:** TV-on hum, channel-change clunk, power-off zap.
+- **Tape it:** double-tap ⏯ on any show to save it to **MY TAPES** (last tab in the guide). OK plays from the start, ⏩ erases.
+- **Saturday mornings** (6 AM–noon): cartoon and kids network channels switch to Saturday-morning cartoons.
+- **Sign-off** (3:00–5:30 AM): broadcast-style channels go off the air with color bars and the tone.
+- **Holiday specials** mixed in: Halloween all October, Christmas from Nov 25 through December.
+- **Prevue Guide channel (GUIDE)** and **Local on the 8s weather (LOCAL)** on every decade tab, with the real music.
+
+Restore point before these features: branch `restore-before-oldschool`.

@@ -64,7 +64,12 @@ def lineups():
     """Ask node to evaluate channels.js so the app and the curator share one definition."""
     js = open(CHANNELS_JS).read() + """
 ;const out = {};
-for (const d of DECADES) out[d.id] = lineup(d.id).map(c => ({ key: c.key, call: c.call, q: c.q + SAFE }));
+for (const d of DECADES) {
+  out[d.id] = lineup(d.id).filter(c => !c.special).map(c => ({ key: c.key, call: c.call, q: c.q + SAFE }));
+  for (const k of (typeof SEASONAL !== 'undefined' ? SEASONAL : [])) {
+    const t = THEMES[k]; out[d.id].push({ key: d.id + ':' + k, call: t.call, q: '(' + t.q + ')' + decadeClause(d.y) + SAFE });
+  }
+}
 console.log(JSON.stringify(out));"""
     return json.loads(subprocess.run(['node', '-e', js], check=True, capture_output=True, text=True).stdout)
 

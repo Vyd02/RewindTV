@@ -163,3 +163,69 @@ body.guide #tune { display: none; }
 #pkHead { font-size: 64px; color: #ffe066; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #pkList { transition: transform .3s cubic-bezier(.2,.9,.3,1); }
 #pick #blkWin { height: 560px; }
+
+/* ---------- station ID ---------- */
+#ident { position: absolute; left: 80px; top: 80px; z-index: 4; pointer-events: none; opacity: 0; padding: 26px 40px 26px 30px;
+  background: linear-gradient(120deg, #120a3ee6, #2a1a6ee6); border-left: 14px solid var(--ch, #ffe066); border-radius: 0 22px 22px 0;
+  display: grid; grid-template-columns: auto auto; column-gap: 26px; align-items: center; overflow: hidden; }
+#ident.go { animation: idIn 3.2s cubic-bezier(.2,1.2,.3,1) both; }
+@keyframes idIn { 0% { opacity: 0; transform: translateX(-120px) skewX(-8deg); } 12% { opacity: 1; transform: none; }
+  85% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateX(-60px); } }
+#idNum { grid-row: span 2; font-size: 150px; line-height: .85; color: var(--ch, #ffe066); text-shadow: 6px 6px 0 #0008; }
+#idCall { font-size: 76px; letter-spacing: 8px; }
+#idName { font-size: 38px; color: #c9bfff; }
+.idBar { position: absolute; inset: 0; background: linear-gradient(90deg, #0000, #ffffff30, #0000); transform: translateX(-100%); }
+#ident.go .idBar { animation: idSweep 1.2s .3s ease-out; }
+@keyframes idSweep { to { transform: translateX(100%); } }
+
+/* ---------- Prevue channel ---------- */
+#prevue, #wx { position: absolute; inset: 0; z-index: 3; transition: opacity .4s; }
+#prevue { background: linear-gradient(180deg, #11053a, #24107a 40%, #0a2a7a); }
+#pvTop { position: absolute; left: 70px; right: 70px; top: 40px; display: flex; align-items: center; gap: 40px; }
+#pvLogo { font-size: 110px; letter-spacing: 6px; color: #fff; text-shadow: 6px 6px 0 #ff3d7f; }
+#pvLogo b { font-weight: normal; margin-left: 20px; font-size: 64px; padding: 0 16px; background: #ffe066; color: #1b0e5c; border-radius: 12px; vertical-align: middle; }
+#pvDec { font-size: 64px; color: #ffe066; }
+#pvPromo { position: absolute; right: 70px; top: 190px; width: 820px; height: 300px; border-radius: 24px; padding: 30px 40px;
+  background: linear-gradient(135deg, var(--ch, #7a5cff), #120a3e); box-shadow: 0 20px 60px #000a; }
+#pvPromo.flip { animation: flip .7s cubic-bezier(.2,1.3,.3,1); }
+@keyframes flip { from { transform: rotateX(90deg); opacity: 0; } to { transform: none; opacity: 1; } }
+#pvWhen { font-size: 40px; color: #ffe066; letter-spacing: 3px; }
+#pvTitle { font-size: 64px; line-height: 1.1; margin: 14px 0; max-height: 150px; overflow: hidden; }
+#pvCh { font-size: 40px; color: #ffffffcc; }
+#pvList { position: absolute; left: 70px; right: 70px; top: 520px; bottom: 30px; overflow: hidden; border-top: 6px solid #ffe066;
+  -webkit-mask-image: linear-gradient(180deg, #0000, #000 8%, #000 90%, #0000); }
+#pvRows { animation: pvScroll 90s linear infinite; }
+@keyframes pvScroll { from { transform: translateY(0); } to { transform: translateY(-50%); } }
+.pr { display: grid; grid-template-columns: 90px 190px 1fr 1fr; gap: 20px; height: 84px; align-items: center; font-size: 44px; border-bottom: 2px solid #ffffff1a; }
+.pr b { font-weight: normal; color: var(--ch); font-size: 54px; text-align: right; }
+.pr i { font-style: normal; }
+.pr span, .pr em { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-style: normal; }
+.pr em { color: #c9bfff; }
+
+/* ---------- Local on the 8s ---------- */
+#wx { background: linear-gradient(180deg, #0b1f6b, #1a4fbf 55%, #3a7be0); }
+#wxTop { position: absolute; left: 70px; right: 70px; top: 40px; display: flex; align-items: center; gap: 50px; }
+#wxLogo { font-size: 46px; line-height: 1; padding: 18px 26px; background: #ffb300; color: #0b1f6b; border-radius: 10px; letter-spacing: 2px; }
+#wxCity { flex: 1; font-size: 84px; text-shadow: 5px 5px 0 #0007; }
+#wxClock { font-size: 72px; color: #ffe066; text-shadow: 4px 4px 0 #0007; }
+#wxPanel { position: absolute; left: 70px; right: 70px; top: 210px; bottom: 140px; border-radius: 26px; padding: 34px 56px;
+  background: linear-gradient(180deg, #0b2a8ae6, #12309ae6); border: 5px solid #8ec5ff; box-shadow: 0 20px 60px #0008; }
+#wxHead { font-size: 60px; color: #ffe066; letter-spacing: 6px; margin-bottom: 20px; }
+#wxBody.in { animation: wxIn .6s ease-out; }
+@keyframes wxIn { from { opacity: 0; transform: translateX(80px); } to { opacity: 1; transform: none; } }
+.wxNow { display: flex; align-items: baseline; gap: 50px; }
+.wxTemp { font-size: 260px; line-height: 1; text-shadow: 8px 8px 0 #0006; }
+.wxCond { font-size: 90px; }
+.wxList { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 60px; font-size: 54px; margin-top: 20px; }
+.wxList b { font-weight: normal; color: #ffe066; }
+.wxText { font-size: 62px; line-height: 1.35; }
+.wxDays { display: grid; grid-template-columns: repeat(5, 1fr); gap: 24px; margin-top: 30px; }
+.wxDay { background: #ffffff18; border-radius: 18px; padding: 30px 20px; text-align: center; display: grid; gap: 14px; font-size: 44px; }
+.wxDay b { font-weight: normal; font-size: 56px; color: #ffe066; }
+.wxDay em { font-style: normal; font-size: 80px; } .wxDay i { font-style: normal; font-size: 54px; color: #8ec5ff; }
+#wxTicker { position: absolute; left: 0; right: 0; bottom: 30px; height: 80px; background: #0b1f6b; border-top: 4px solid #ffb300;
+  overflow: hidden; white-space: nowrap; font-size: 46px; line-height: 76px; }
+#wxTicker span { display: inline-block; padding-left: 100%; animation: tick 30s linear infinite; }
+@keyframes tick { to { transform: translateX(-100%); } }
+body.special #banner { z-index: 5; }
+body.guide #prevue, body.guide #wx { opacity: 0; pointer-events: none; }
