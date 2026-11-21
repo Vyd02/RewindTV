@@ -135,13 +135,17 @@ function loadList(ch) {
   const k = ch.key + '|' + tag;
   if (S.lists[k]) return S.lists[k];
   const [dec] = ch.key.split(':');
-  const parts = [tag.includes('sat') ? curated({ key: dec + ':satam' }).catch(() => loadBase(ch)) : loadBase(ch)];
+  // Each channel keeps its own shows; Saturday cartoons / holiday specials get mixed in, not swapped in
+  // (swapping made every kids channel play the same small list at once).
   const sn = tag.includes('halloween') ? 'halloween' : tag.includes('christmas') ? 'christmas' : '';
-  if (sn) parts.push(curated({ key: dec + ':' + sn }).catch(() => []));
-  return (S.lists[k] = Promise.all(parts).then(([a, b]) => {
+  const parts = [loadBase(ch),
+    tag.includes('sat') ? curated({ key: dec + ':satam' }).catch(() => []) : Promise.resolve([]),
+    sn ? curated({ key: dec + ':' + sn }).catch(() => []) : Promise.resolve([])];
+  return (S.lists[k] = Promise.all(parts).then(([a, sat, hol]) => {
     const seen = new Set(), docs = [];
-    // Holiday specials mixed in: about one show in four.
-    const extra = (b || []).slice(0, Math.max(5, Math.ceil(a.length / 3)));
+    // Shuffle the extras per channel so two channels don't pull the same ones.
+    const pick = (arr, n) => shuffle(arr, hash(k)).slice(0, n);
+    const extra = pick(sat, Math.ceil(a.length / 2)).concat(pick(hol, Math.max(5, Math.ceil(a.length / 3))));
     for (const x of a.concat(extra)) if (!seen.has(x.id)) { seen.add(x.id); docs.push(x); }
     docs.sort((x, y) => x.id < y.id ? -1 : 1);
     return arrange({ key: k }, docs);
@@ -594,7 +598,8 @@ setInterval(() => {
 /* ---------- guide ---------- */
 const ROW_H = 96;
 const G = { dec: DEC, list: CHANNELS };
-const TABS = DECADES.map(d => d.id).concat(['MOVIES', 'SHOWS', 'TAPES']);
+// Movies and full episodes air on the regular channels now; the guide keeps decades + your tapes.
+const TABS = DECADES.map(d => d.id).concat(['TAPES']);
 const isVod = t => t === 'MOVIES' || t === 'SHOWS' || t === 'TAPES';
 function drawTabs() {
   $('gTabs').innerHTML = TABS.map(t =>

@@ -128,7 +128,7 @@ def write_index():
             continue
         ix[dec] = {}
         for f in sorted(os.listdir(d)):
-            if f.endswith('.json'):
+            if f.endswith('.json') and not f.endswith('.all.json'):
                 ix[dec][f[:-5]] = len(json.load(open(os.path.join(d, f))).get('items', []))
     json.dump(ix, open(os.path.join(OUT, 'index.json'), 'w'), indent=1)
 
