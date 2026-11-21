@@ -33,7 +33,7 @@ To update, run the same URL again. It installs right over the old version.
 | Number keys | Direct channel entry · also used to enter the adult PIN |
 
 ### Adult lock (SKIN + XXX)
-Open the guide → Play/Pause to open Blocked Tapes. At the bottom you’ll see options to **Set adult PIN** or **Clear adult PIN**. Once a PIN is set, tuning to SKIN or XXX asks for the 4-digit code (unlocked for the rest of the session).
+Open the guide → Play/Pause to open Blocked Tapes. At the bottom you’ll see options to **Set adult PIN** or **Clear adult PIN**. Once a PIN is set, tuning to SKIN or XXX asks for the 4-digit code (unlocked for the rest of the session). No number buttons? Use ▲▼ to pick each number and OK to go to the next; ◀ erases, BACK cancels.
 
 ### Other quality-of-life
 - Remembers the last channel you watched **per decade**

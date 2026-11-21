@@ -5,7 +5,7 @@
 const SLOT_MS = 30 * 60 * 1000;      // schedule moves in half-hour blocks, like a real guide
 const LIST_ROWS = 400;               // how many items each channel draws from (higher = more variety)
 const LIST_TTL = 12 * 3600 * 1000;   // refresh channel lists twice a day
-const STALL_MS = 6500;               // skip a tape that won't start (faster recovery)
+const STALL_MS = 12000;              // skip a tape that won't start (big sharp files need time on Fire TV)
 const STATIC_MS = 700;               // static only plays for a beat, then a quiet "TUNING..." card
 const ADULT_KEYS = new Set(['xxx', 'skin']);  // channels that can be PIN-locked
 const $ = id => document.getElementById(id);
@@ -73,6 +73,12 @@ function setLastCh(dec, key) {
 function adultPin() { return store.get('rt:pin') || ''; }
 function setAdultPin(p) { store.set('rt:pin', String(p || '')); }
 function isAdultLocked() { return !!adultPin() && !S.adultUnlocked; }
+function needsPin(ch) { return !!ch && ADULT_KEYS.has(ch.key.split(':')[1] || ch.key) && isAdultLocked(); }
+function askPin(then) {
+  S.pinMode = 'unlock'; S.pinEntry = ''; S.pinDigit = 0; S.pendingAction = then;
+  toast('🔒 Adult channel · ▲▼ pick each number, OK for next (or use number keys)', 5000);
+  showPin();
+}
 
 /* ---------- fit the 1920x1080 stage to whatever screen we're on ---------- */
 function fit() {
@@ -321,13 +327,9 @@ function blockedKey(key) {
       const row = all[blkSel];
       if (row.id === '__pin__') {
         closeBlocked();
-        S.pinMode = 'set';
-        S.pinEntry = '';
-        toast('Enter a new 4-digit PIN for adult channels', 4000);
-        $('osdNum').textContent = '____';
-        $('osdCall').textContent = 'PIN';
-        $('osd').classList.remove('hidden');
-        return;
+        S.pinMode = 'set'; S.pinEntry = ''; S.pinDigit = 0;
+        toast('New adult PIN · ▲▼ pick each number, OK for next', 5000);
+        return showPin();
       }
       if (row.id === '__clearpin__') {
         setAdultPin('');
@@ -351,19 +353,13 @@ function blockedKey(key) {
 async function tune(idx, opts = {}) {
   const n = CHANNELS.length;
   idx = ((idx % n) + n) % n;
-  if (idx !== S.idx && S.idx >= 0) S.last = S.idx;
-  S.idx = idx;
   const ch = CHANNELS[idx];
 
-  // Adult lock: require PIN for SKIN / XXX if a PIN is set and not unlocked this session.
-  if (ADULT_KEYS.has(ch.key.split(':')[1] || ch.key) && isAdultLocked() && !opts.force) {
-    S.pinMode = 'unlock';
-    S.pinEntry = '';
-    S.pendingAdultIdx = idx;
-    toast('🔒 Adult channel locked · enter 4-digit PIN', 4000);
-    osd({ num: '🔒', call: 'PIN' });
-    return;
-  }
+  // Adult lock: ask for the PIN first; nothing changes unless it's right.
+  if (needsPin(ch) && !opts.force) return askPin(() => tune(idx, { force: true }));
+
+  if (idx !== S.idx && S.idx >= 0) S.last = S.idx;
+  S.idx = idx;
 
   const token = ++S.token;
   S.vod = null;
@@ -721,25 +717,17 @@ function tuneFromGuide(k) {
   if (isVod(G.dec)) return pickVod(k);
   closeGuide();
   if (G.dec !== DEC) {
-    DEC = G.dec;
-    CHANNELS = G.list;
-    store.set('rt:dec', DEC);
-    // Prefer highlighted row; otherwise restore last channel for that decade.
-    const lastKey = lastChFor(DEC);
-    let idx = k;
-    if (lastKey) {
-      const found = CHANNELS.findIndex(c => c.key === lastKey);
-      if (found >= 0) idx = found;
-    }
-    S.last = S.idx;
-    S.idx = -1;
-    return tune(idx);
+    const list = G.list, dec = G.dec;
+    const go = () => { DEC = dec; CHANNELS = list; store.set('rt:dec', DEC); S.last = S.idx; S.idx = -1; tune(k, { force: true }); };
+    // The channel you highlighted is the one you get (PIN first if it's locked).
+    return needsPin(list[k]) ? askPin(go) : go();
   }
   if (k !== S.idx) tune(k); else showBanner();
 }
 
 /* ---------- remote ---------- */
 function remote(key) {
+  if (S.pinMode) return pinKey(key);
   if (S.blk) return blockedKey(key);
   if (S.pick) return pickerKey(key);
   if (/^\d$/.test(key)) return digit(key);
@@ -776,53 +764,7 @@ function remote(key) {
   }
 }
 function digit(d) {
-  // PIN entry mode for adult lock / setting PIN
-  if (S.pinMode) {
-    S.pinEntry = (S.pinEntry + d).slice(0, 4);
-    $('osdNum').textContent = '•'.repeat(S.pinEntry.length).padEnd(4, '_');
-    $('osdCall').textContent = 'PIN';
-    $('osd').classList.remove('hidden'); clearTimeout(osdTimer);
-    if (S.pinEntry.length < 4) return;
-    const entered = S.pinEntry;
-    S.pinEntry = '';
-    if (S.pinMode === 'unlock') {
-      if (entered === adultPin()) {
-        S.adultUnlocked = true;
-        S.pinMode = null;
-        toast('🔓 Unlocked for this session', 2500);
-        const idx = S.pendingAdultIdx;
-        S.pendingAdultIdx = null;
-        if (typeof idx === 'number') tune(idx, { force: true });
-      } else {
-        toast('❌ Wrong PIN', 2000);
-        S.pinMode = null;
-        osd(CHANNELS[S.idx] || { num: '—', call: '' });
-      }
-      return;
-    }
-    if (S.pinMode === 'set') {
-      S.pendingPin = entered;
-      S.pinMode = 'confirm';
-      toast('Enter PIN again to confirm', 3000);
-      $('osdNum').textContent = '____';
-      return;
-    }
-    if (S.pinMode === 'confirm') {
-      if (entered === S.pendingPin) {
-        setAdultPin(entered);
-        S.pinMode = null;
-        S.pendingPin = null;
-        toast('🔒 Adult lock set · SKIN & XXX now require PIN', 4000);
-      } else {
-        toast('PINs did not match · try again', 2500);
-        S.pinMode = null;
-        S.pendingPin = null;
-      }
-      osd(CHANNELS[S.idx] || { num: '—', call: '' });
-      return;
-    }
-    return;
-  }
+  if (S.pinMode) return pinPush(d);
 
   // Normal direct channel entry
   S.digits = (S.digits + d).slice(-2);
@@ -834,6 +776,53 @@ function digit(d) {
     if (k >= 0) { closeGuide(); tune(k); } else { toast('No channel there'); $('osd').classList.add('hidden'); }
   }, 1300);
 }
+/* ---------- PIN entry (number keys, or ▲▼ + OK on remotes without numbers) ---------- */
+function showPin() {
+  const shown = '•'.repeat(S.pinEntry.length) + (S.pinEntry.length < 4 ? String(S.pinDigit || 0) : '');
+  $('osdNum').textContent = shown.padEnd(4, '_');
+  $('osdCall').textContent = 'PIN';
+  $('osd').classList.remove('hidden'); clearTimeout(osdTimer);
+}
+function endPin(msg, ms) {
+  S.pinMode = null; S.pinEntry = ''; S.pendingPin = null; S.pendingAction = null;
+  if (msg) toast(msg, ms || 2500);
+  setTimeout(() => $('osd').classList.add('hidden'), 1200);
+}
+function pinKey(key) {
+  if (/^\d$/.test(key)) return pinPush(key);
+  switch (key) {
+    case 'Up': S.pinDigit = ((S.pinDigit || 0) + 1) % 10; return showPin();
+    case 'Down': S.pinDigit = ((S.pinDigit || 0) + 9) % 10; return showPin();
+    case 'OK': case 'Right': return pinPush(String(S.pinDigit || 0));
+    case 'Left': S.pinEntry = S.pinEntry.slice(0, -1); return showPin();
+    case 'Back': case 'Guide': return endPin('PIN cancelled', 1500);
+  }
+}
+function pinPush(d) {
+  S.pinEntry = (S.pinEntry + d).slice(0, 4); S.pinDigit = 0;
+  showPin();
+  if (S.pinEntry.length < 4) return;
+  const entered = S.pinEntry; S.pinEntry = '';
+  if (S.pinMode === 'unlock') {
+    if (entered === adultPin()) {
+      S.adultUnlocked = true;
+      const then = S.pendingAction;
+      endPin('🔓 Unlocked for this session');
+      if (then) then();
+    } else endPin('❌ Wrong PIN', 2000);
+    return;
+  }
+  if (S.pinMode === 'set') {
+    S.pendingPin = entered; S.pinMode = 'confirm';
+    toast('Enter the same PIN again to confirm', 3000);
+    return showPin();
+  }
+  if (S.pinMode === 'confirm') {
+    if (entered === S.pendingPin) { setAdultPin(entered); S.adultUnlocked = false; endPin('🔒 Adult lock set · SKIN & XXX now need the PIN', 4000); }
+    else endPin('PINs didn’t match · try again', 2500);
+  }
+}
+
 function powerOff() {
   closeGuide(); hiss(false); vid.pause();
   screen.classList.remove('on'); screen.classList.add('off');
