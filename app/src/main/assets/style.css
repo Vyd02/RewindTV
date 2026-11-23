@@ -235,3 +235,20 @@ body.guide #prevue, body.guide #wx { opacity: 0; pointer-events: none; }
 body:not(.guide) #gSel, body:not(.guide) #gLogo b, body:not(.guide) #gTabs .tab.live::after, body:not(.guide) #gRows { animation: none !important; }
 body:not(.special) #pvRows, body:not(.special) #wxTicker span { animation: none !important; }
 #banner, #osd, #vcr, #toast, #ident { will-change: transform, opacity; }
+
+/* ---------- button bar ---------- */
+#keys { position: absolute; left: 50%; bottom: 300px; transform: translateX(-50%); z-index: 6; display: flex; gap: 14px;
+  padding: 12px 18px; background: #0b0626e6; border: 3px solid #8f7bff; border-radius: 20px; white-space: nowrap;
+  box-shadow: 0 14px 40px #000a; transition: opacity .25s, transform .3s cubic-bezier(.2,1.2,.3,1); }
+#keys.hidden { opacity: 0; transform: translateX(-50%) translateY(20px); }
+#keys .key { display: flex; align-items: center; gap: 10px; font-size: 34px; color: #e6e0ff; }
+#keys .key b { font-weight: normal; min-width: 54px; padding: 2px 12px; border-radius: 10px; background: #ffe066; color: #1b0e5c; text-align: center; box-shadow: 0 4px 0 #b8971f; }
+#keys.k-guide, #keys.k-tapes, #keys.k-notapes { bottom: 16px; border-color: #ffe066; }
+#keys.k-blocked, #keys.k-pick { bottom: 40px; border-color: #ff5c8a; }
+#keys.k-pin { bottom: auto; top: 220px; border-color: #4dff6a; }
+#keys.k-brk { bottom: 60px; }
+#keys.k-special { bottom: 130px; }
+#bnHelp, #gHint, #blkHint { display: none; }
+#gList { bottom: 100px; }
+
+#gVer { right: auto; left: 74px; top: 300px; bottom: auto; font-size: 26px; }

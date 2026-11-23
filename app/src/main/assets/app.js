@@ -590,7 +590,44 @@ function banner(ch, title, next, frac) {
 function showBanner() {
   if (S.guide) return;
   $('banner').classList.remove('hidden');
-  clearTimeout(bannerTimer); bannerTimer = setTimeout(() => $('banner').classList.add('hidden'), 6000);
+  clearTimeout(bannerTimer); bannerTimer = setTimeout(() => { $('banner').classList.add('hidden'); refreshKeys(); }, 6000);
+  refreshKeys();
+}
+
+/* ---------- button bar: shows the remote buttons for wherever you are ---------- */
+const KEYS = {
+  live:    [['☰', 'Guide'], ['▲▼', 'Channel'], ['◀', 'Last channel'], ['⏯', 'Pause'], ['⏯⏯', 'Tape it'], ['⏩⏩', 'Skip show'], ['⏪⏪', 'Start over']],
+  guide:   [['▲▼', 'Browse'], ['CH ▲▼', 'Jump 5'], ['OK', 'Watch'], ['◀ ▶', 'Decades & My Tapes'], ['⏯', 'Blocked tapes · PIN'], ['BACK', 'Close']],
+  tapes:   [['▲▼', 'Pick a tape'], ['OK', 'Play from start'], ['⏩', 'Erase tape'], ['◀ ▶', 'Tabs'], ['BACK', 'Close']],
+  notapes: [['⏯⏯', 'Tape any show while watching'], ['◀ ▶', 'Tabs'], ['BACK', 'Close']],
+  blocked: [['▲▼', 'Pick'], ['OK', 'Unblock · Set PIN'], ['BACK', 'Done']],
+  pick:    [['▲▼', 'Pick'], ['OK', 'Play'], ['BACK', 'Close']],
+  pin:     [['▲▼', 'Change number'], ['OK', 'Next number'], ['◀', 'Erase'], ['BACK', 'Cancel']],
+  brk:     [['⏩⏩', 'Skip the break'], ['▲▼', 'Channel'], ['☰', 'Guide']],
+  special: [['▲▼', 'Channel'], ['☰', 'Guide'], ['BACK ×2', 'Turn off']],
+  vod:     [['⏪⏪', 'Start over'], ['⏩⏩', 'Next'], ['⏯⏯', 'Tape it'], ['CH ▲▼', 'Back to live TV']],
+};
+let keysNow = '', keysT = 0;
+function keyContext() {
+  if (S.pinMode) return 'pin';
+  if (S.blk) return 'blocked';
+  if (S.pick) return 'pick';
+  if (S.guide) return G.dec === 'TAPES' ? (tapes().length ? 'tapes' : 'notapes') : 'guide';
+  if (S.inBreak) return 'brk';
+  if (S.special) return 'special';
+  if (!$('banner').classList.contains('hidden')) return S.vod ? 'vod' : 'live';
+  return '';
+}
+function refreshKeys(flashMs) {
+  const ctx = keyContext(), bar = $('keys');
+  if (ctx !== keysNow) {
+    keysNow = ctx;
+    if (ctx) bar.innerHTML = KEYS[ctx].map(([k, what]) => `<span class="key"><b>${k}</b>${what}</span>`).join('');
+  }
+  bar.className = ctx ? 'k-' + ctx : 'hidden';
+  // Breaks and the special channels show their buttons for a few seconds, then get out of the way.
+  clearTimeout(keysT);
+  if (flashMs) keysT = setTimeout(() => { if (keysNow === ctx) { keysNow = ''; bar.className = 'hidden'; } }, flashMs);
 }
 function toast(text, ms = 2000) { const t = $('toast'); t.textContent = text; t.classList.remove('hidden'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.add('hidden'), ms); }
 setInterval(() => {
@@ -687,7 +724,7 @@ function buildVod() {
 }
 function buildTapes() {
   drawTabs();
-  $('gNowHead').textContent = 'MY TAPES · OK play · ⏩ erase';
+  $('gNowHead').textContent = 'MY TAPES';
   $('gNextHead').textContent = 'TAPED FROM';
   const t = tapes(); G.list = t.length ? t.map(x => Object.assign({}, x, { title: x.title })) : [{ loading: true }];
   const esc = s => String(s).replace(/</g, '&lt;');
@@ -804,6 +841,10 @@ function tuneFromGuide(k) {
 
 /* ---------- remote ---------- */
 function remote(key) {
+  remoteInner(key);
+  if (!S.inBreak && !S.special) refreshKeys();
+}
+function remoteInner(key) {
   if (S.pinMode) return pinKey(key);
   if (S.blk) return blockedKey(key);
   if (S.pick) return pickerKey(key);
@@ -940,6 +981,7 @@ async function maybeBreak(ch, then) {
   vid.play().catch(() => {});
   $('banner').classList.add('hidden');
   toast('📺 We’ll be right back', 2500);
+  refreshKeys(7000);
   clearTimeout(S.breakTimer);
   S.breakTimer = setTimeout(endBreak, dur * 1000);
   S.breakStall = setTimeout(() => { if (S.inBreak && vid.readyState < 3) endBreak(); }, 12000);
@@ -947,6 +989,7 @@ async function maybeBreak(ch, then) {
 function endBreak() {
   const b = S.inBreak; if (!b) return;
   S.inBreak = null; clearTimeout(S.breakTimer); clearTimeout(S.breakStall);
+  refreshKeys();
   if (b.token === S.token) b.then();
 }
 function cancelBreak() { S.inBreak = null; clearTimeout(S.breakTimer); clearTimeout(S.breakStall); }
@@ -1008,6 +1051,7 @@ function tapeIt() {
   toast('📼 Taped! Find it in the guide under MY TAPES', 3000);
 }
 function deleteTape(k) {
+  setTimeout(refreshKeys, 0);
   const t = tapes(); if (!t[k]) return;
   const gone = t.splice(k, 1)[0]; store.set('rt:tapes', t);
   toast('🗑 Erased “' + gone.title.slice(0, 40) + '”', 2000);
@@ -1046,6 +1090,7 @@ function startSpecial(ch) {
   staticOff(); bars(false);
   if (ch.special === 'prevue') startPrevue(ch); else startLocal(ch);
   nextTrack();
+  setTimeout(() => refreshKeys(8000), 50);
 }
 function startPrevue(ch) {
   banner(ch, 'Prevue Guide', 'Scrolling listings for every channel', 0);
