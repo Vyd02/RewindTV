@@ -42,9 +42,13 @@ class MainActivity : Activity() {
 
         web = WebView(this)
         web.setBackgroundColor(Color.TRANSPARENT)
-        video = NativeVideo(this) { type, pos, dur ->
+        video = NativeVideo(this, { type, pos, dur ->
             web.post { web.evaluateJavascript("window.RT && RT._v('$type', $pos, $dur)", null) }
-        }
+        }, { cmd ->
+            // Alexa voice commands → the app's own actions (older screen files fall back to remote keys).
+            val key = when (cmd) { "next" -> "FastForward"; "prev" -> "Rewind"; "ff" -> "FastForward"; "rw" -> "Rewind"; else -> "PlayPause" }
+            web.post { web.evaluateJavascript("window.RT && (RT.cmd ? RT.cmd('$cmd') : RT.remote('$key'))", null) }
+        })
         web.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -190,6 +194,7 @@ class MainActivity : Activity() {
         @JavascriptInterface fun freshWeb(): Boolean = Updater.freshWeb.also { Updater.freshWeb = false }
         @JavascriptInterface fun alive() { pageAlive = true; runOnUiThread { errorView.visibility = View.GONE } }
         @JavascriptInterface fun vLoad(url: String, startMs: Double) { runOnUiThread { video.load(url, startMs.toLong()) } }
+        @JavascriptInterface fun vTitle(title: String, sub: String) { runOnUiThread { video.title(title, sub) } }
         @JavascriptInterface fun vPlay() { runOnUiThread { video.play() } }
         @JavascriptInterface fun vPause() { runOnUiThread { video.pause() } }
         @JavascriptInterface fun vStop() { runOnUiThread { video.stop() } }

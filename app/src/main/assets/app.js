@@ -441,6 +441,7 @@ async function play(ch, list, i, offsetMs, token, tries, slot, k = 0) {
   k = Math.min(k, f.cands.length - 1);
   S.playing = { ch, list, i, f, fi, k, title, token, tries, slot, offsetMs, startOff: off, watched: 0 };
 
+  if (NATIVE && Android.vTitle) Android.vTitle(title, 'CH ' + ch.num + ' ' + ch.name);
   vid.startAt = off;
   vid.src = f.cands[k];
   vid.onloadedmetadata = () => {
@@ -932,6 +933,7 @@ async function maybeBreak(ch, then) {
   const token = S.token;
   S.inBreak = { token, then };
   clearTimeout(S.stallTimer);
+  if (NATIVE && Android.vTitle) Android.vTitle('Commercial break', 'CH ' + ch.num + ' ' + ch.name);
   vid.startAt = off;
   vid.src = 'https://archive.org/download/' + encodeURIComponent(it.id) + '/' + e.n.split('/').map(encodeURIComponent).join('/');
   vid.onloadedmetadata = () => { try { vid.currentTime = off; } catch (x) {} };
@@ -1026,6 +1028,7 @@ async function nextTrack() {
     const list = TRACKS[id]; if (!list.length) throw 0;
     const n = list[Math.floor(Math.random() * list.length)];
     if (S.special !== kind) return;
+    if (NATIVE && Android.vTitle) Android.vTitle(kind === 'prevue' ? 'Prevue Guide' : 'Local on the 8s', 'Rewind TV');
     vid.startAt = 0; vid.src = 'https://archive.org/download/' + id + '/' + n.split('/').map(encodeURIComponent).join('/');
     vid.onloadedmetadata = null; vid.play().catch(() => {});
   } catch (e) { setTimeout(() => { if (S.special === kind) nextTrack(); }, 4000); }
@@ -1156,6 +1159,18 @@ function pinPush(d) {
   }
 }
 
+// Alexa: "pause", "play"/"resume", "next", "previous", "fast forward", "rewind"
+function cmd(c) {
+  if (S.pinMode || S.blk || S.pick) return;
+  switch (c) {
+    case 'play': if (vid.paused) togglePause(); return;
+    case 'pause': if (!vid.paused) togglePause(); return;
+    case 'next': return skipShow();
+    case 'prev': return startOver();
+    case 'ff': return seekBy(30);
+    case 'rw': return seekBy(-15);
+  }
+}
 function togglePause() {
   if (vid.paused) { vid.play().catch(() => {}); S.paused = false; vcr('▶ PLAY'); setTimeout(() => { if (!S.paused) vcr(''); }, 1500); }
   else { vid.pause(); S.paused = true; vcr('❚❚ PAUSE', true); }
@@ -1179,7 +1194,7 @@ addEventListener('keydown', e => {
 function sleep() { S.slept = true; vid.pause(); hiss(false); }
 function wake() { if (S.slept) { S.slept = false; tune(S.idx); } }
 
-window.RT = { remote, _got, _v, sleep, wake, toast: t => toast(t, 5000), _end: () => S.playing && nextNatural(S.playing) };
+window.RT = { remote, cmd, _got, _v, sleep, wake, toast: t => toast(t, 5000), _end: () => S.playing && nextNatural(S.playing) };
 if (window.Android && Android.alive) Android.alive();
 
 function boot() {

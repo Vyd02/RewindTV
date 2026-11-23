@@ -8,7 +8,9 @@ import android.view.Gravity
 import android.animation.ValueAnimator
 import android.view.SurfaceView
 import android.widget.FrameLayout
+import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
@@ -17,12 +19,13 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.session.MediaSession
 
 /**
  * Plays video with the TV's own hardware player (ExoPlayer) underneath the
  * see-through web page. The page drives it and gets events back through [emit].
  */
-class NativeVideo(ctx: Context, private val emit: (String, Long, Long) -> Unit) {
+class NativeVideo(ctx: Context, private val emit: (String, Long, Long) -> Unit, private val voice: (String) -> Unit = {}) {
 
     val box = FrameLayout(ctx).apply { setBackgroundColor(Color.BLACK) }
     // SurfaceView = the TV's direct video plane: hardware scaling, no extra GPU pass, nothing drawn over the picture.
@@ -59,6 +62,34 @@ class NativeVideo(ctx: Context, private val emit: (String, Long, Long) -> Unit) 
         .build()
 
     private var sentMeta = false
+    private var nextTitle = "Rewind TV"
+    private var nextSub = ""
+
+    /**
+     * Alexa / Fire TV voice control. Fire TV sends "Alexa, pause / play / next / rewind / fast forward" to
+     * the app that has an active media session. This one forwards those commands to the app's own logic
+     * (next = next show, previous = start over) instead of acting on the raw player.
+     */
+    private val voicePlayer = object : ForwardingPlayer(player) {
+        override fun play() = voice("play")
+        override fun pause() = voice("pause")
+        override fun setPlayWhenReady(playWhenReady: Boolean) = voice(if (playWhenReady) "play" else "pause")
+        override fun seekToNext() = voice("next")
+        override fun seekToNextMediaItem() = voice("next")
+        override fun seekToPrevious() = voice("prev")
+        override fun seekToPreviousMediaItem() = voice("prev")
+        override fun seekForward() = voice("ff")
+        override fun seekBack() = voice("rw")
+        override fun stop() = voice("pause")
+        private val extra = Player.Commands.Builder()
+            .addAll(Player.COMMAND_PLAY_PAUSE, Player.COMMAND_SEEK_TO_NEXT, Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM,
+                Player.COMMAND_SEEK_TO_PREVIOUS, Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM,
+                Player.COMMAND_SEEK_FORWARD, Player.COMMAND_SEEK_BACK, Player.COMMAND_STOP).build()
+        override fun getAvailableCommands(): Player.Commands =
+            super.getAvailableCommands().buildUpon().addAll(extra).build()
+        override fun isCommandAvailable(command: Int): Boolean = extra.contains(command) || super.isCommandAvailable(command)
+    }
+    private val session: MediaSession = MediaSession.Builder(ctx, voicePlayer).setId("rewindtv").build()
 
     init {
         box.addView(surface, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT, Gravity.CENTER))
@@ -111,9 +142,15 @@ class NativeVideo(ctx: Context, private val emit: (String, Long, Long) -> Unit) 
         main.postDelayed({ tick() }, 500)
     }
 
+    /** Title shown in Fire TV's "now playing" and used by Alexa; applies to the next load. */
+    fun title(title: String, sub: String) { nextTitle = title.ifBlank { "Rewind TV" }; nextSub = sub }
+
     fun load(url: String, startMs: Long) {
         sentMeta = false
-        player.setMediaItem(MediaItem.fromUri(url), startMs.coerceAtLeast(0))
+        val item = MediaItem.Builder().setUri(url)
+            .setMediaMetadata(MediaMetadata.Builder().setTitle(nextTitle).setArtist(nextSub).setStation(nextSub).build())
+            .build()
+        player.setMediaItem(item, startMs.coerceAtLeast(0))
         player.prepare()
     }
     fun play() { player.playWhenReady = true; player.play() }
@@ -146,5 +183,5 @@ class NativeVideo(ctx: Context, private val emit: (String, Long, Long) -> Unit) 
         }
     }
 
-    fun release() { main.removeCallbacksAndMessages(null); player.release() }
+    fun release() { main.removeCallbacksAndMessages(null); session.release(); player.release() }
 }
