@@ -65,7 +65,7 @@ def lineups():
     js = open(CHANNELS_JS).read() + """
 ;const out = {};
 for (const d of DECADES) {
-  out[d.id] = lineup(d.id).filter(c => !c.special).map(c => ({ key: c.key, call: c.call, q: c.q + SAFE }));
+  out[d.id] = lineup(d.id).filter(c => !c.special).map(c => ({ key: c.key, call: c.call, q: c.q + SAFE, shows: c.shows || null }));
   for (const k of (typeof SEASONAL !== 'undefined' ? SEASONAL : [])) {
     const t = THEMES[k]; out[d.id].push({ key: d.id + ':' + k, call: t.call, q: '(' + t.q + ')' + decadeClause(d.y) + SAFE });
   }
@@ -119,6 +119,43 @@ def summarize(meta, floors):
     return eps
 
 
+SAFE_JS = None
+
+
+def safe_clause():
+    """The app's SAFE filter (videos only, English, no watermark uploaders), read from channels.js."""
+    global SAFE_JS
+    if SAFE_JS is None:
+        js = open(CHANNELS_JS).read() + ';console.log(SAFE)'
+        SAFE_JS = subprocess.run(['node', '-e', js], check=True, capture_output=True, text=True).stdout.strip()
+    return SAFE_JS
+
+
+def show_docs(shows, prof):
+    """Search each show by name and take turns between them, so one show can't fill the channel."""
+    per = {}
+    def one(t):
+        q = 'title:"' + t.replace('"', '') + '"' + safe_clause()
+        u = 'https://archive.org/advancedsearch.php?' + urllib.parse.urlencode([
+            ('q', q), ('fl[]', 'identifier'), ('fl[]', 'title'), ('rows', 60), ('sort[]', 'downloads desc'), ('output', 'json')])
+        try:
+            return t, get(u)['response']['docs']
+        except Exception:
+            return t, []
+    with cf.ThreadPoolExecutor(8) as ex:
+        for t, d in ex.map(one, shows):
+            per[t] = d
+    out, seen, k = [], set(), 0
+    while any(per.values()) and len(out) < 1200:
+        for t in shows:
+            if per.get(t):
+                d = per[t].pop(0)
+                if d['identifier'] not in seen:
+                    seen.add(d['identifier']); out.append(d)
+        k += 1
+    return out
+
+
 def write_index():
     """lists/index.json = how many clean tapes each channel has. The app hides channels under 10."""
     ix = {}
@@ -166,7 +203,10 @@ def main():
                 ('q', ch['q']), ('fl[]', 'identifier'), ('fl[]', 'title'),
                 ('rows', DEEP_ROWS['all'] if dec == 'all' else DEEP_ROWS[prof]), ('sort[]', 'downloads desc'), ('output', 'json')])
             try:
-                docs = get(url)['response']['docs']
+                if ch.get('shows'):
+                    docs = show_docs(ch['shows'], prof)
+                else:
+                    docs = get(url)['response']['docs']
             except Exception as e:
                 report.append((dec, ch['call'], 'SEARCH FAILED', str(e)[:60]))
                 continue

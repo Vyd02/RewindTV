@@ -21,11 +21,11 @@ LISTS = os.path.join(ROOT, 'lists')
 
 SHOW_THEMES = {'tv', 'sitcom', 'cartoons', 'satam', 'anime', 'gameshow', 'nick', 'cn', 'disney', 'toonami', 'swim', 'foxkids',
                'kidswb', 'pbskids', 'nickjr', 'nickatnite', 'boomerang', 'jetix', 'tgif', 'comedycentral', 'scifi', 'abcsat',
-               'halloween', 'christmas', 'animalplanet', 'discovery', 'history', 'tlc', 'natgeo', 'foodnetwork', 'ae', 'usa', 'tbs'}
+               'halloween', 'christmas', 'animalplanet', 'discovery', 'history', 'tlc', 'natgeo', 'foodnetwork', 'ae', 'usa', 'tbs', 'mtv', 'hbo'}
 MOVIE_THEMES = {'movies', 'comedyfilm', 'noir', 'western', 'horror'}
 MIN_KEEP = 10
 
-CLIP = re.compile(r'bumper|bumps|\bpromos?\b|\bident|station id|sign[- ]?(on|off)|trailers?|teaser|compilation|'
+CLIP = re.compile(r'^\s*\W*commercials?\b|(?<!with )(?<!w/ )(?<!and )\bcommercials\b(?! (intact|included|in tact))|bumper|bumps|\bpromos?\b|\bident|station id|sign[- ]?(on|off)|trailers?|teaser|compilation|'
                   r'marathon|\bblock\b|full tape|\btape \d|tapes\b|recording session|commercial (collection|break|block)|'
                   r'commercials only|\bads?\b(?! ?\d)|\bwoc\b|youtube|stream|podcast|reaction|review|let\'?s play|'
                   r'gameplay|walkthrough|unboxing|behind the scenes|making of|\|', re.I)
@@ -77,11 +77,12 @@ def main():
                 src = json.load(open(raw))
             fn = movie_item if theme in MOVIE_THEMES else show_item
             keep = [x for x in (fn(it) for it in src.get('items', [])) if x]
-            out = dict(src, items=keep, realtv=True) if len(keep) >= MIN_KEEP else dict(src, realtv=False)
+            # Too few real episodes/movies: take the channel off the dial instead of airing junk under its name.
+            out = dict(src, items=keep, realtv=True) if len(keep) >= MIN_KEEP else dict(src, items=[], realtv='off')
             json.dump(out, open(p, 'w'), separators=(',', ':'))
             report.append((dec, theme, len(src.get('items', [])), len(keep), len(keep) >= MIN_KEEP))
     for dec, theme, before, after, used in report:
-        print(f'{dec} {theme:14} {before:3} -> {after:3} {"full eps/movies" if used else "kept as-is (too few)"}')
+        print(f'{dec} {theme:14} {before:3} -> {after:3} {"full eps/movies" if used else "OFF THE DIAL (too few real episodes)"}')
     print('\nchannels now full episodes/movies:', sum(1 for r in report if r[4]), 'of', len(report))
 
 
